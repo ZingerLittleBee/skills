@@ -1,0 +1,7 @@
+interface:
+  display_name: "X 中文短评"
+  short_description: "把英文信息压成有态度的中文短评"
+  default_prompt: "Use $writing-x-zh-briefs to turn this English X post or news item into a concise Chinese quote-post take."
+
+policy:
+  allow_implicit_invocation: true
