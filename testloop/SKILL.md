@@ -110,7 +110,7 @@ section). The prompt tells Codex the app is already running and to only drive it
 
 ```bash
 rm -f .testloop/test-results.md .testloop/decision.json
-# <codex_cmd> from config.yaml, e.g. codex exec --dangerously-bypass-approvals-and-sandbox
+# <codex_cmd> from config.yaml, e.g. codex exec --yolo
 cat .testloop/codex-prompt.txt | <codex_cmd> 2>&1 | tee .testloop/codex-last.log
 ```
 

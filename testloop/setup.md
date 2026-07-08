@@ -67,12 +67,13 @@ build_cmd: pnpm build
 
 # How Codex is invoked to DRIVE the running app. Run WITHOUT a sandbox: Codex
 # drives the GUI via computer use (screenshots + clicks -- side effects a sandbox
-# blocks) and writes results. `--dangerously-bypass-approvals-and-sandbox` also
-# skips approval prompts so the background run is never left waiting on one.
+# blocks) and writes results. `--yolo` (alias for
+# `--dangerously-bypass-approvals-and-sandbox`) also skips approval prompts so the
+# background run is never left waiting on one.
 # `-c model_reasoning_effort=medium` keeps thinking moderate -- driving a GUI to
 # a written plan rarely needs max reasoning; raise to high/xhigh if Codex fumbles
 # the steps (or drop the flag to inherit your ~/.codex/config.toml default).
-codex_cmd: codex exec --dangerously-bypass-approvals-and-sandbox -c model_reasoning_effort=medium
+codex_cmd: codex exec --yolo -c model_reasoning_effort=medium
 
 max_rounds: 8                    # hard backstop against infinite loops
 ```
