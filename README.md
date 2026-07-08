@@ -24,6 +24,7 @@ Add `-g` to install globally (user-level) and `-y` to skip confirmation prompts.
 ### Examples
 
 ```bash
+npx skills add ZingerLittleBee/skills@implement-codex
 npx skills add ZingerLittleBee/skills@testloop
 npx skills add ZingerLittleBee/skills@writing-x-zh-briefs
 ```
