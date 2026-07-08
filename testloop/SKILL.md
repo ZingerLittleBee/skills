@@ -100,6 +100,11 @@ Check `project.md` for a readiness signal (a window/screen it should reach, a
 port that should respond) and give it time to get there. If it never comes up,
 stop and tell the user.
 
+**Running is enough — foreground is not required.** Do not demand the app stay
+frontmost or that the user keep their hands off the machine: Codex's computer
+use drives it in the background and raises it itself when needed (its prompt
+already says "bring it to the foreground if needed").
+
 **c. Write the Codex prompt** — write the [prompt
 template](#prompt-handed-to-codex) to `.testloop/codex-prompt.txt`, substituting
 `target_kind`, `target_desc`, and the contents of `.testloop/project.md`, and
@@ -205,7 +210,8 @@ App under test (<target_kind>): <target_desc>
 Project profile (background context):
 <contents of .testloop/project.md>
 
-The app is ALREADY built, installed, and running on screen. Do NOT build,
+The app is ALREADY built, installed, and running (it may be behind other
+windows). Do NOT build,
 install, relaunch, or quit it -- just drive its GUI (bring it to the foreground
 if needed) and run the plan against it. If it is still loading or on a splash
 screen, wait until it is ready before you start.
