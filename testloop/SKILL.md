@@ -151,9 +151,15 @@ Read `.testloop/test-results.md` and classify the round out loud as exactly one
 of:
 
 - **pass** — every step passed. The loop is done; report success and stop.
-- **code-fix** — a real bug in the app code. Go to step 4.
-- **retest** — no code change needed, but the test conditions were wrong or flaky;
-  adjust the plan and start a new round (do not touch code).
+- **code-fix** — a real bug in the app code; go to step 4. Before choosing this
+  verdict, **corroborate** the FAIL in the source: locate the code path that
+  plausibly produces the reported behavior. If you cannot, do not fix blind —
+  the failure is suspect; choose **retest** instead.
+- **retest** — no code change needed: the test conditions were wrong, the step
+  was flaky, or a FAIL could not be corroborated in code. Narrow the plan to the
+  suspect steps and go to step 5 (do not touch code) — a fresh, stateless Codex
+  run is an independent witness. If a failure reproduces on retest and you still
+  cannot corroborate it in code, do not loop again — choose **human**.
 - **human** — you cannot confidently tell whether this is a real bug or expected
   behavior. Stop, explain the ambiguity, and ask the user to decide.
 
@@ -162,8 +168,13 @@ State the failing steps and your reasoning.
 ### 4. Fix
 
 For **code-fix**: make the minimal code change in the repo (`repo_dir` from
-config — the project root) to fix the failing behavior. Explain each change. Then
-archive the round and loop back to step 1 to re-verify:
+config — the project root) to fix the failing behavior. Explain each change,
+then go to step 5.
+
+### 5. Next round
+
+Archive the round before the next one overwrites its artifacts (also on
+**retest** rounds, which skip step 4):
 
 ```bash
 # snapshot this round's artifacts (skip any that don't exist)
@@ -173,10 +184,8 @@ cp .testloop/test-plan.md .testloop/test-results.md .testloop/iterations/round-N
 
 (Replace `N` with the round number.)
 
-### 5. Next round
-
 Increment `N`. If `N` exceeds `max_rounds`, stop and summarize what still fails
-and what you tried. Otherwise start a new round at step 1, re-testing the fix and
+and what you tried. Otherwise start a new round at step 1, re-testing any fix and
 watching for regressions.
 
 ## Prompt handed to Codex
@@ -204,6 +213,10 @@ screen, wait until it is ready before you start.
 Read the plan from <abs>/.testloop/test-plan.md. Execute every step. Write results
 to <abs>/.testloop/test-results.md: for each step record PASS or FAIL, and for any
 failure include concrete reproduction steps and observed vs expected behavior.
+
+Before recording a FAIL, re-attempt the step once (re-navigating as needed) to
+rule out timing or mis-click. If the step is not safely repeatable (it mutates
+state), skip the retry, record the FAIL, and note it was not re-attempted.
 
 If you cannot decide something on your own (ambiguous trade-off, unexpected
 situation, unclear requirement), DO NOT guess. Instead write a JSON object to
@@ -233,6 +246,6 @@ Incorporate this answer and proceed.
 | `codex-last.log` | Codex run | durable stream of the last run; `tail -f` to watch progress |
 | `decision.json` | Codex | an escalated question when Codex can't decide |
 | `decision-answer.txt` | you | the user's answer to a `decision.json` |
-| `iterations/round-N/` | you (step 4) | per-round snapshot |
+| `iterations/round-N/` | you (step 5) | per-round snapshot |
 
 These are scratch artifacts; setup offers to add `.testloop/` to `.gitignore`.
