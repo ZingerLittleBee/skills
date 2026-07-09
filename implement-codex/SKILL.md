@@ -41,8 +41,12 @@ cat <scratch>/brief.md | codex exec --yolo -c model_reasoning_effort=xhigh \
   -o <scratch>/last-message.md 2>&1 | tee <scratch>/codex.log
 ```
 
-Long runs are normal at xhigh; follow progress with
-`tail -f <scratch>/codex.log`. If the process exits almost immediately,
+Long runs are normal at xhigh. As soon as Codex is launched, tell the user
+the log path and how to follow it live: `tail -f <scratch>/codex.log` in
+another terminal, or `! tail -20 <scratch>/codex.log` typed into the session
+prompt.
+
+If the process exits almost immediately,
 the CLI likely failed to start — read the log tail before assuming any work
 happened.
 
