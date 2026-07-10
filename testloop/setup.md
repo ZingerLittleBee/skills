@@ -70,10 +70,12 @@ build_cmd: pnpm build
 # blocks) and writes results. `--yolo` (alias for
 # `--dangerously-bypass-approvals-and-sandbox`) also skips approval prompts so the
 # background run is never left waiting on one.
+# `-m gpt-5.6-terra` pins the loop to the balanced agentic coding model instead of
+# silently inheriting a potentially older model from ~/.codex/config.toml.
 # `-c model_reasoning_effort=medium` keeps thinking moderate -- driving a GUI to
 # a written plan rarely needs max reasoning; raise to high/xhigh if Codex fumbles
-# the steps (or drop the flag to inherit your ~/.codex/config.toml default).
-codex_cmd: codex exec --yolo -c model_reasoning_effort=medium
+# the steps (or drop only this flag to inherit your reasoning-effort default).
+codex_cmd: codex exec --yolo -m gpt-5.6-terra -c model_reasoning_effort=medium
 
 max_rounds: 8                    # hard backstop against infinite loops
 ```

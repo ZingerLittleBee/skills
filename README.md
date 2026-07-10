@@ -17,8 +17,8 @@ Add `-g` to install globally (user-level) and `-y` to skip confirmation prompts.
 
 | Skill | Description |
 |---|---|
-| [`implement-codex`](implement-codex/) | Implement a PRD or set of issues by delegating the coding to Codex (xhigh reasoning): Claude briefs, verifies, reviews, and commits. Invoke with `/implement-codex`. |
-| [`testloop`](testloop/) | Drive a Claude ↔ Codex GUI test-fix loop: the main agent builds, installs, and launches the app and plans/judges/fixes, while Codex drives the running app via computer use to execute the test plan. Invoke with `/testloop [scope]`. |
+| [`implement-codex`](implement-codex/) | Implement a PRD or set of issues by delegating the coding to Codex (`gpt-5.6-sol`, xhigh reasoning): Claude briefs, verifies, reviews, and commits. Invoke with `/implement-codex`. |
+| [`testloop`](testloop/) | Drive a Claude ↔ Codex GUI test-fix loop with `gpt-5.6-terra`: the main agent builds, installs, and launches the app and plans/judges/fixes, while Codex drives the running app via computer use to execute the test plan. Invoke with `/testloop [scope]`. |
 | [`writing-x-zh-briefs`](writing-x-zh-briefs/) | Turn English X posts, AI news, product updates, or thin source material into concise Simplified Chinese X posts, quote-post takes, or one-to-two sentence commentary. |
 
 ### Examples
