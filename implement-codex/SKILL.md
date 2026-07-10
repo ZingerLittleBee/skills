@@ -1,6 +1,6 @@
 ---
 name: implement-codex
-description: "Implement a PRD or set of issues by delegating the coding to Codex (xhigh reasoning): Claude briefs, verifies, reviews, and commits."
+description: "Implement a PRD or set of issues by delegating the coding to Codex (gpt-5.6-sol, xhigh reasoning): Claude briefs, verifies, reviews, and commits."
 disable-model-invocation: true
 ---
 
@@ -37,7 +37,8 @@ acceptance criteria. Write the brief to `<scratch>/brief.md` containing:
 Run Codex in the background and watch the log:
 
 ```bash
-cat <scratch>/brief.md | codex exec --yolo -c model_reasoning_effort=xhigh \
+cat <scratch>/brief.md | codex exec --yolo -m gpt-5.6-sol \
+  -c model_reasoning_effort=xhigh \
   -o <scratch>/last-message.md 2>&1 | tee <scratch>/codex.log
 ```
 
@@ -67,8 +68,8 @@ On any failure, hand back: write the failure output to
 
 ```bash
 cat <scratch>/handback.md | codex exec resume <session-id> --yolo \
-  -c model_reasoning_effort=xhigh -o <scratch>/last-message.md - 2>&1 \
-  | tee -a <scratch>/codex.log
+  -m gpt-5.6-sol -c model_reasoning_effort=xhigh \
+  -o <scratch>/last-message.md - 2>&1 | tee -a <scratch>/codex.log
 ```
 
 Resume by explicit session id, not `--last` — any other Codex run in this repo
