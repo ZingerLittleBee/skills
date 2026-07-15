@@ -1,6 +1,6 @@
 # Shared Agent Profile
 
-**Purpose**: Single source of truth for user-level agent instructions, shared across Claude Code, Codex, OpenCode, and Droid via symlinks. See `~/.agents/README.md` for the setup.
+**Purpose**: Single source of truth for user-level agent instructions, shared across Claude Code, Codex, OpenCode, and Droid via symlinks. Canonical copy: `agent-profile/AGENTS.md` in the ZingerLittleBee/skills repo; see the README next to it for setup.
 **When to read this**: On task initialization and before major decisions; re-skim when requirements shift.
 **Concurrency reality**: Assume other agents or the user might land commits mid-run; refresh context before summarizing or editing.
 

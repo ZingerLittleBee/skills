@@ -4,33 +4,24 @@
 
 Everything outside this repo is a symlink. Edit `AGENTS.md` here, commit here; every tool picks up the change on its next session.
 
-## Symlink chain
+## Symlink layout
 
 ```
 ~/.claude/CLAUDE.md             ─┐
-~/.codex/AGENTS.md               ├─> ~/.agents/AGENTS.md ─> <repo>/agent-profile/AGENTS.md
-~/.config/opencode/AGENTS.md     │   ~/.agents/README.md ─> <repo>/agent-profile/README.md
+~/.codex/AGENTS.md               ├─> <repo>/agent-profile/AGENTS.md
+~/.config/opencode/AGENTS.md     │
 ~/.factory/AGENTS.md            ─┘
 ```
 
-`~/.agents/` is the local hub: tools point at it, it points into this repo. The extra hop means a repo move only requires fixing two links instead of four.
+## Setup
 
-## Setup on a new machine
-
-Clone this repo, then run from the repo root:
+Clone this repo anywhere, then run:
 
 ```sh
-# Local hub
-mkdir -p ~/.agents
-ln -sf "$(pwd)/agent-profile/AGENTS.md" ~/.agents/AGENTS.md
-ln -sf "$(pwd)/agent-profile/README.md" ~/.agents/README.md
-
-# Per-tool entry files
-ln -sf ~/.agents/AGENTS.md ~/.claude/CLAUDE.md
-ln -sf ~/.agents/AGENTS.md ~/.codex/AGENTS.md
-ln -sf ~/.agents/AGENTS.md ~/.config/opencode/AGENTS.md
-ln -sf ~/.agents/AGENTS.md ~/.factory/AGENTS.md
+./setup-agent-profile.sh
 ```
+
+Idempotent; re-run it whenever a tool update replaces a symlink with a regular file (existing regular files are backed up, never overwritten). If the repo moves, re-run it from the new location.
 
 ## Rules of the road
 
@@ -39,7 +30,6 @@ ln -sf ~/.agents/AGENTS.md ~/.factory/AGENTS.md
 - **Content must be in English** (matches the profile's own language rules for agent-instruction files).
 - **Watch the size.** The profile is injected into every session of every tool; keep it around 2-3k tokens and cut low-value prose before adding new sections.
 - The file is intentionally NOT at the repo root: agents working on this repo would otherwise load it as project-level instructions.
-- If a tool update replaces a symlink with a regular file, re-run the matching `ln -sf` line above.
 
 ## History
 
