@@ -134,9 +134,9 @@ Before finishing a task:
 <!-- context7 -->
 ## Context7 Documentation Lookup
 
-Use the `ctx7` CLI for current docs whenever a question involves a library, framework, SDK, API, CLI tool, or cloud service, even well-known ones; your training data may be stale. Prefer it over web search for library docs. Do not use it for refactoring, writing scripts from scratch, business logic debugging, code review, or general programming concepts.
+The `ctx7` CLI fetches current library docs. Use it only when the answer genuinely depends on up-to-date docs: version migrations, recently changed or unfamiliar APIs, exact configuration options, or version-specific behavior. For stable, well-known APIs, answer directly and verify with ctx7 only if unsure. Prefer it over web search for library docs.
 
-1. Resolve the library ID: `npx ctx7@latest library <name> "<user's question>"` (use official names with proper punctuation, e.g. "Next.js" not "nextjs"). Pick the best match by name, description relevance, snippet count, and source reputation; append `/version` to the ID for version-specific docs.
+1. Resolve the library ID: `npx ctx7@latest library <name> "<user's question>"` (official names with proper punctuation, e.g. "Next.js" not "nextjs"); append `/version` for version-specific docs.
 2. Fetch and answer from: `npx ctx7@latest docs <libraryId> "<user's question>"`.
 
 Max 3 commands per question; no secrets in queries. On quota errors, tell the user to run `npx ctx7@latest login` or set `CONTEXT7_API_KEY`; do not silently fall back to training data. If running sandboxed and hitting DNS/network errors, rerun outside the sandbox.
