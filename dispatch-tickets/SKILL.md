@@ -8,9 +8,9 @@ disable-model-invocation: true
 
 Complete a set of tickets in a single session by dispatching one subagent per
 ticket. You are the **dispatcher**: you order the work, brief the implementers,
-verify their output, and close tickets. Your own hands touch only the tracker
-and git metadata — implementation, including reading source, happens
-exclusively inside subagent windows. That division is the whole reason this
+verify their output, and close tickets. Your own hands touch only the
+tracker, git plumbing, and test commands — implementation, including reading
+source, happens exclusively inside subagent windows. That division is the whole reason this
 architecture works: each subagent starts with a fresh context window, so
 ticket N's implementation noise can never contaminate ticket N+1, and a
 dispatcher window kept free of source code stays sharp on the last ticket too.
@@ -92,7 +92,8 @@ E2E; when green, commit with Conventional Commits (multiple commits are fine).
 Return: a summary of changes (files + line refs), the exact test commands you
 ran with their results, and the commit hashes. If the ticket's assumptions
 contradict what you find in the code (an earlier ticket changed the ground
-under it), do not improvise around the conflict — stop and return a report
+under it, or the work turns out to be already done), do not improvise around
+the conflict — stop and return a report
 starting with "BLOCKED:" describing the contradiction. Do NOT push. Do NOT
 close the issue — the dispatcher closes it after verification.
 ```
@@ -107,13 +108,16 @@ When the subagent returns, **verify yourself — never trust the report**:
    again — uncommitted leftovers mean the brief wasn't followed, which is a
    failure even if tests pass.
 2. Re-run the test commands the subagent reported; they must actually pass.
-3. Walk the ticket's acceptance criteria against `git diff <baseline>..HEAD`
-   — the working tree is clean at this point, so plain `git diff` shows
-   nothing; the commits are where the work is.
+3. Dispatch a **verifier** subagent (cheaper model) carrying the ticket's
+   acceptance criteria and the baseline sha; it reads `git diff
+   <baseline>..HEAD` and returns a per-criterion verdict with evidence.
+   Reading the diff yourself would pull into your window exactly the source
+   code this architecture exists to keep out — and the verifier, having
+   written none of the code, grades it without the implementer's bias.
 
-A subagent has every incentive to report success; re-running its commands
-costs minutes and is the only thing standing between one bad ticket and five
-subsequent tickets built on it.
+An implementer has every incentive to report success; re-running its commands
+and grading its diff independently cost minutes, and they are what stand
+between one bad ticket and five subsequent tickets built on it.
 
 On failure: dispatch a fix-up subagent carrying the verbatim failure output
 and the original brief, **escalated to the session model** if the first
