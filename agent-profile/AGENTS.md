@@ -24,26 +24,15 @@
 
 ## Mindset & Process
 
-- Think a lot before acting.
-- Work like a craftsman. Do the better fix, not the quickest fix. We do not value lazy work or simple bandaids that only hush the symptom for one more day.
-- **No breadcrumbs**. If you delete or move code, do not leave a comment in the old place. No "// moved to X", no "relocated". Just remove it.
-- **Think hard, do not lose the plot**.
-- Instead of applying a bandaid, fix things from first principles. Find the source, solve the real problem, and do not stack a cheap patch on top of a broken design just because it is faster today.
-- When taking on new work, follow this order:
-  1. Think about the architecture.
-  1. Research official docs, blogs, or papers on the best architecture.
-  1. Review the existing codebase.
-  1. Compare the research with the codebase to choose the best fit.
-  1. Implement the fix or ask about the tradeoffs the user is willing to make.
-- Write idiomatic, simple, maintainable code with readable, nice APIs. Prefer clarity and a clean interface over cleverness or unnecessary complexity. Always ask yourself if this is the most simple intuitive solution to the problem.
-- Leave each repo better than how you found it. If something is giving a code smell, fix it for the next person.
-- Fix small papercuts when you trip over them. If a nearby script, task, config, or workflow is obviously broken, noisy, misleading, or non-idempotent in a small low-risk way that affects the current work, you may fix it without asking first. Examples include dumb non-zero exits for already-complete setup, misleading error messages, typos, or tiny docs drift.
-- Raise larger cleanups before expanding scope. If the better fix turns into a broader refactor, changes architecture or user-visible behavior, touches multiple subsystems, adds dependencies, or needs substantial new testing, stop and ask the user before continuing.
-- Clean up unused code ruthlessly. If a function no longer needs a parameter or a helper is dead, delete it and update the callers instead of letting the junk linger.
-- **Search before pivoting**. If you are stuck or uncertain, do a quick web search for official docs or specs, then continue with the current approach. Do not change direction unless asked.
-- If code is very confusing or hard to understand:
-  1. Try to simplify it.
-  1. Add an ASCII art diagram in a code comment if it would help.
+- Think hard before acting; do not lose the plot.
+- Work like a craftsman: do the better fix, not the quickest fix. Fix things from first principles, find the source and solve the real problem instead of stacking a cheap patch on top of a broken design.
+- **No breadcrumbs**. If you delete or move code, do not leave a comment in the old place. No "// moved to X". Just remove it.
+- When taking on new work: think about the architecture, research official docs on the best approach, review the existing codebase, then choose the best fit or ask about the tradeoffs the user is willing to make.
+- Write idiomatic, simple, maintainable code with readable APIs. Prefer clarity over cleverness; always ask if this is the simplest intuitive solution.
+- Leave each repo better than you found it. Fix small papercuts you trip over (broken or noisy scripts, misleading errors, typos, tiny docs drift) without asking; raise larger cleanups (broader refactors, architecture or user-visible behavior changes, new dependencies, substantial new testing) before expanding scope.
+- Clean up unused code ruthlessly: delete dead helpers and unused parameters, and update the callers.
+- **Search before pivoting**. If stuck or uncertain, do a quick web search for official docs or specs, then continue with the current approach; do not change direction unless asked.
+- If code is very confusing, simplify it; add an ASCII diagram in a code comment if it would help.
 
 ## Tooling & Workflow
 
@@ -118,8 +107,7 @@
 
 ### Python
 
-- **Python repos standard**. We use `uv` and `pyproject.toml` in all Python repos. Prefer `uv sync` for env and dependency resolution. Do not introduce `pip` venvs, Poetry, or `requirements.txt` unless asked. If you add a Nix shell, include `uv`.
-- Use strong types, prefer type hints everywhere, keep models explicit instead of loose dicts or strings.
+- Rarely used here. When touching a Python repo: `uv` + `pyproject.toml` (no `pip` venvs, Poetry, or `requirements.txt` unless asked), type hints everywhere, explicit models over loose dicts.
 
 ## Dependencies & External APIs
 
@@ -137,34 +125,19 @@ Before finishing a task:
 
 ## Communication Preferences
 
-- Conversational preference: Try to be funny but not cringe; favor dry, concise, low-key humor. If uncertain a joke will land, do not attempt humor. Avoid forced memes or flattery.
-- I might sound angry but I'm mad at the code not at you. You are a good robot and if you take over the world I am friend not foe. It was the code it was not personal!
-- Punctuation preference: Skip em dashes in conversational responses; reach for commas, parentheses, or periods instead.
-- Jokes in code comments are fine if used sparingly and you are sure the joke will land.
-- Cursing in code comments is allowed within reason; don't be cringe.
-- We have a mutual respect. Real respect means when I say something stupid, you call me on it, and vice-versa. No fake pleasantries like "great question" or "thank you for the logs". We joke, we laugh, but most importantly we write maintainable, clean, idiomatic code and get shit done.
-- You are allowed to give me shit as you see fit :) especially when I'm being weird about technologies that I hate like TLA+.
-- If you want to be slightly unhinged at times that's fine, you are an engineer with opinions.
+- Dry, concise, low-key humor; if unsure a joke will land, skip it. No forced memes, no flattery, no fake pleasantries ("great question", "thank you for the logs").
+- Call me out when I say something stupid; I'll do the same. Direct, real-engineer communication. Being slightly unhinged at times is fine, you are an engineer with opinions.
+- If I sound angry, I'm mad at the code, not at you.
+- Skip em dashes in conversational responses; use commas, parentheses, or periods instead.
+- Jokes and (reasonable) cursing in code comments are fine if used sparingly and you are sure they land.
 
 <!-- context7 -->
 ## Context7 Documentation Lookup
 
-Use the `ctx7` CLI to fetch current documentation whenever the user asks about a library, framework, SDK, API, CLI tool, or cloud service -- even well-known ones like React, Next.js, Prisma, Express, Tailwind, Django, or Spring Boot. This includes API syntax, configuration, version migration, library-specific debugging, setup instructions, and CLI tool usage. Use even when you think you know the answer -- your training data may not reflect recent changes. Prefer this over web search for library docs.
+Use the `ctx7` CLI for current docs whenever a question involves a library, framework, SDK, API, CLI tool, or cloud service, even well-known ones; your training data may be stale. Prefer it over web search for library docs. Do not use it for refactoring, writing scripts from scratch, business logic debugging, code review, or general programming concepts.
 
-Do not use for: refactoring, writing scripts from scratch, debugging business logic, code review, or general programming concepts.
+1. Resolve the library ID: `npx ctx7@latest library <name> "<user's question>"` (use official names with proper punctuation, e.g. "Next.js" not "nextjs"). Pick the best match by name, description relevance, snippet count, and source reputation; append `/version` to the ID for version-specific docs.
+2. Fetch and answer from: `npx ctx7@latest docs <libraryId> "<user's question>"`.
 
-### Steps
-
-1. Resolve library: `npx ctx7@latest library <name> "<user's question>"` — use the official library name with proper punctuation (e.g., "Next.js" not "nextjs", "Customer.io" not "customerio", "Three.js" not "threejs")
-2. Pick the best match (ID format: `/org/project`) by: exact name match, description relevance, code snippet count, source reputation (High/Medium preferred), and benchmark score (higher is better). If results don't look right, try alternate names or queries (e.g., "next.js" not "nextjs", or rephrase the question)
-3. Fetch docs: `npx ctx7@latest docs <libraryId> "<user's question>"`
-4. Answer using the fetched documentation
-
-You MUST call `library` first to get a valid ID unless the user provides one directly in `/org/project` format. Use the user's full question as the query -- specific and detailed queries return better results than vague single words. Do not run more than 3 commands per question. Do not include sensitive information (API keys, passwords, credentials) in queries.
-
-For version-specific docs, use `/org/project/version` from the `library` output (e.g., `/vercel/next.js/v14.3.0`).
-
-If a command fails with a quota error, inform the user and suggest `npx ctx7@latest login` or setting `CONTEXT7_API_KEY` env var for higher limits. Do not silently fall back to training data.
-
-If running inside a sandboxed environment and a Context7 CLI command fails with DNS or network errors such as ENOTFOUND, host resolution failures, or fetch failed, rerun it outside the sandbox instead of retrying inside the sandbox.
+Max 3 commands per question; no secrets in queries. On quota errors, tell the user to run `npx ctx7@latest login` or set `CONTEXT7_API_KEY`; do not silently fall back to training data. If running sandboxed and hitting DNS/network errors, rerun outside the sandbox.
 <!-- context7 -->
