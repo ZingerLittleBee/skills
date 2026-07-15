@@ -18,7 +18,7 @@ link() {
     mv "$dst" "$bak"
     echo "  backed up regular file to $bak"
   fi
-  ln -sf "$PROFILE" "$dst"
+  ln -sfn "$PROFILE" "$dst"
   echo "  $dst -> $PROFILE"
 }
 
