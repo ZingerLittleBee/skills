@@ -73,7 +73,12 @@ catch a wrong plan.
 
 ## 5. The dispatch loop
 
-For each ticket in order, spawn a `general-purpose` subagent **synchronously**
+For each ticket in order, first record the baseline: `git rev-parse HEAD`.
+Everything the ticket produced is `git log <baseline>..HEAD` — commit hashes
+for the close comment, and the diff for verification — taken from git, not
+from the subagent's self-report.
+
+Then spawn a `general-purpose` subagent **synchronously**
 (you need its result before the next ticket) with this brief, filled in:
 
 ```
@@ -85,16 +90,26 @@ Follow the repo's conventions (CLAUDE.md / AGENTS.md), domain glossary
 (CONTEXT.md), and ADRs. Run the tests you added or changed plus any affected
 E2E; when green, commit with Conventional Commits (multiple commits are fine).
 Return: a summary of changes (files + line refs), the exact test commands you
-ran with their results, and the commit hashes. Do NOT push. Do NOT close the
-issue — the dispatcher closes it after verification.
+ran with their results, and the commit hashes. If the ticket's assumptions
+contradict what you find in the code (an earlier ticket changed the ground
+under it), do not improvise around the conflict — stop and return a report
+starting with "BLOCKED:" describing the contradiction. Do NOT push. Do NOT
+close the issue — the dispatcher closes it after verification.
 ```
+
+A "BLOCKED:" return is not a failure — it means the ticket is stale. Stop the
+run and surface the contradiction to the user; re-briefing an implementer to
+guess its way around a wrong ticket produces confident garbage.
 
 When the subagent returns, **verify yourself — never trust the report**:
 
-1. `git log` shows new commits on the branch.
+1. `git log <baseline>..HEAD` shows new commits, and `git status` is clean
+   again — uncommitted leftovers mean the brief wasn't followed, which is a
+   failure even if tests pass.
 2. Re-run the test commands the subagent reported; they must actually pass.
-3. Walk the ticket's acceptance criteria against `git diff` / `git status`
-   (new files are untracked and invisible to plain `git diff`).
+3. Walk the ticket's acceptance criteria against `git diff <baseline>..HEAD`
+   — the working tree is clean at this point, so plain `git diff` shows
+   nothing; the commits are where the work is.
 
 A subagent has every incentive to report success; re-running its commands
 costs minutes and is the only thing standing between one bad ticket and five
@@ -116,7 +131,10 @@ move to the next.
 After the last ticket, dispatch one more subagent (cheaper model) to run the
 repo's full check suite — lint, typecheck, full tests, full E2E, whatever the
 repo's CI runs. Per-ticket runs only cover the tests each ticket touched;
-cross-ticket breakage surfaces here.
+cross-ticket breakage surfaces here. If the sweep fails, treat it like a
+ticket failure: dispatch a fix-up subagent on the session model with the
+verbatim failure output, budget 2, and if it still fails report honestly —
+never bury a red final sweep in an otherwise green-looking report.
 
 Then give the final report: per ticket — commits, test evidence, retries used
 and why; plus anything left over (TODOs, warnings, flaky tests observed).
