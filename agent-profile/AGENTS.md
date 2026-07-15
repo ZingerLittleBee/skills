@@ -59,7 +59,7 @@
 - Creating commits is authorized by default. Run the minimum necessary `git add` and `git commit` commands without asking.
 - Commit as soon as a feature is implemented or a fix is done. One logical unit of work = one commit.
 - Prefer NOT to combine multiple units of work into a single commit, but it is not forbidden. Use judgment: scattered small files or trivial miscellaneous changes may be grouped when separate commits would only add noise.
-- Do not commit directly to the default branch (`main`/`master`) unless the user explicitly asks. If you are on it, create a feature branch first; the workflow is PR-based. Creating a feature branch for this purpose is authorized, same as committing.
+- Follow the repo's branching convention. If the repo works PR-based (history is mostly merge/PR commits), create a feature branch before committing instead of committing directly to `main`/`master`; creating that branch is authorized, same as committing. If the repo's history shows direct commits to the default branch (personal projects, config/dotfiles repos), committing directly to it is fine. When unsure, prefer a feature branch.
 - Pushing and opening PRs require an explicit user request; only local commits and feature-branch creation are authorized by default.
 - Other Git write operations still require explicit user authorization; avoid destructive operations like `git reset --hard`, `git checkout --`, rebases, or force pushes unless the user explicitly asks for them.
 
