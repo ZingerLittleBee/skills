@@ -8,12 +8,12 @@ disable-model-invocation: true
 
 Complete a set of tickets in a single session by dispatching one subagent per
 ticket. You are the **dispatcher**: you order the work, brief the implementers,
-verify their output, and close tickets. You never implement, and you never read
-source files — every line of code you pull into your own context is context
-you'll drag through the whole run. The reason this architecture works is that
-each subagent gets a fresh context window, so ticket N's implementation noise
-can never contaminate ticket N+1; keep your own window equally clean so the
-scheduling judgment stays sharp on the last ticket too.
+verify their output, and close tickets. Your own hands touch only the tracker
+and git metadata — implementation, including reading source, happens
+exclusively inside subagent windows. That division is the whole reason this
+architecture works: each subagent starts with a fresh context window, so
+ticket N's implementation noise can never contaminate ticket N+1, and a
+dispatcher window kept free of source code stays sharp on the last ticket too.
 
 ## 1. Preconditions
 
@@ -131,14 +131,12 @@ move to the next.
 After the last ticket, dispatch one more subagent (cheaper model) to run the
 repo's full check suite — lint, typecheck, full tests, full E2E, whatever the
 repo's CI runs. Per-ticket runs only cover the tests each ticket touched;
-cross-ticket breakage surfaces here. If the sweep fails, treat it like a
-ticket failure: dispatch a fix-up subagent on the session model with the
-verbatim failure output, budget 2, and if it still fails report honestly —
-never bury a red final sweep in an otherwise green-looking report.
+cross-ticket breakage surfaces here. A failed sweep follows the same fix-up
+rule as a failed ticket (session model, same budget); if it stays red, the
+final report leads with that.
 
 Then give the final report: per ticket — commits, test evidence, retries used
 and why; plus anything left over (TODOs, warnings, flaky tests observed).
 
 Red lines for the whole run: never push; never modify or close the parent
-spec; never skip, reorder, or merge tickets; never implement in your own
-context.
+spec; never skip, reorder, or merge tickets.
