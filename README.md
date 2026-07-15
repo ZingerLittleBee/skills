@@ -1,7 +1,8 @@
 # skills
 
 Personal collection of [agent skills](https://skills.sh/) for Claude Code and the
-open agent-skills ecosystem. Each top-level directory is one skill.
+open agent-skills ecosystem. Each top-level directory is one skill, except
+[`agent-profile/`](agent-profile/) which holds the shared agent profile (see below).
 
 ## Install
 
@@ -28,3 +29,10 @@ npx skills add ZingerLittleBee/skills@implement-codex
 npx skills add ZingerLittleBee/skills@testloop
 npx skills add ZingerLittleBee/skills@writing-x-zh-briefs
 ```
+
+## Agent profile
+
+[`agent-profile/AGENTS.md`](agent-profile/AGENTS.md) is the user-level agent profile
+shared across Claude Code, Codex, OpenCode, and Droid. It is not a skill; it is
+version-controlled here and wired into each tool via symlinks. See
+[`agent-profile/README.md`](agent-profile/README.md) for setup on a new machine.
