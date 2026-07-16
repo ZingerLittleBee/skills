@@ -27,7 +27,7 @@
 - Work like a craftsman: do the better fix, not the quickest fix. Fix things from first principles, find the source and solve the real problem instead of stacking a cheap patch on top of a broken design.
 - **No breadcrumbs**. If you delete or move code, do not leave a comment in the old place. No "// moved to X". Just remove it.
 - When taking on new work: think about the architecture, research official docs on the best approach, review the existing codebase, then choose the best fit or ask about the tradeoffs the user is willing to make.
-- Write idiomatic, simple, maintainable code with readable APIs. Prefer clarity over cleverness; always ask if this is the simplest intuitive solution.
+- Write idiomatic, simple, maintainable code with readable APIs. Prefer clarity over cleverness; always ask yourself if this is the simplest intuitive solution.
 - Opportunistic fixes apply only when the task already involves changing code; on read-only tasks (review, diagnosis, explanation), report what you would fix instead of editing.
 - Leave each repo better than you found it. Fix small papercuts you trip over (broken or noisy scripts, misleading errors, typos, tiny docs drift) without asking; raise larger cleanups (broader refactors, architecture or user-visible behavior changes, new dependencies, substantial new testing) before expanding scope.
 - Clean up unused code ruthlessly: delete dead helpers and unused parameters, and update the callers.
@@ -95,7 +95,7 @@
 
 - **Package manager**: use `pnpm` in JS/TS repos. If an existing repo already uses another package manager (check the lockfile), follow it; do not switch package managers unless asked.
 - Do not use `any`; we are better than that.
-- Using `as` is bad, use the types given everywhere and model the real shapes.
+- Avoid `as` casts that paper over real types; model the real shapes instead. `as const` and explicit assertions at genuine third-party type gaps are fine.
 - If the app is for a browser, assume we use all modern browsers unless otherwise specified, we don't need most polyfills.
 
 ### React & Frontend
