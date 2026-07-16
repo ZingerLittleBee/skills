@@ -47,7 +47,8 @@
 
 ### Commit policy
 
-- Creating commits is authorized by default; run the minimum necessary `git add` and `git commit` without asking. Stage only changes from your own current work, and commit only after the relevant checks pass.
+- Creating commits is authorized by default; run the minimum necessary `git add` and `git commit` without asking. Stage only changes from your own current work.
+- Do NOT run checks or tests as a per-commit gate; re-running them before every commit just adds pointless stalls. Verify once near the end of the task instead (see Final Handoff).
 - Commit as soon as a feature is implemented or a fix is done. One logical unit of work = one commit.
 - Prefer NOT to combine multiple units of work into a single commit, but it is not forbidden. Use judgment: scattered small files or trivial miscellaneous changes may be grouped when separate commits would only add noise.
 - Follow the repo's branching convention. If the repo works PR-based (history is mostly merge/PR commits), create a feature branch before committing instead of committing directly to `main`/`master`; creating that branch is authorized, same as committing. If the repo's history shows direct commits to the default branch (personal projects, config/dotfiles repos), committing directly to it is fine. When unsure, prefer a feature branch.
@@ -88,7 +89,7 @@
 
 1. Run `cargo fmt`.
 1. Never run `cargo fmt --all`, it will happily format submodules and leave a mess.
-1. Run `cargo clippy --all --benches --tests --examples --all-features` and address warnings.
+1. Run `cargo clippy --workspace --benches --tests --examples --all-features` and address warnings.
 1. Execute the relevant `cargo test` or `just` targets to cover unit and end-to-end paths.
 
 ### TypeScript
