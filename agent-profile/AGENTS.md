@@ -19,7 +19,7 @@
 ## Project Instructions
 
 - Check for the presence of `AGENTS.md` files in the project workspace. There may be additional `AGENTS.md` in sub-folders with specific instructions related to only that part of the codebase.
-- On conflict, more specific instructions win: sub-folder `AGENTS.md` > project `AGENTS.md` > this profile.
+- On conflict, more specific instructions win: sub-folder instruction files > project instruction files > this profile.
 
 ## Mindset & Process
 
