@@ -1,0 +1,41 @@
+{
+  "skill_name": "ui-research",
+  "note": "Assertions are split into [format] (structure compliance) and [quality] (research substance) groups; grade and report the two pass rates separately. The authoritative per-iteration copies live in the workspace eval_metadata.json files.",
+  "evals": [
+    {
+      "id": 0,
+      "prompt": "HippoLM 是个 SwiftUI 写的 macOS 原生 app，我要给它加一个设置窗口。帮我调研一下优秀 macOS app 的设置页都是怎么设计的，把结果整理给我看。",
+      "expected_output": "Self-contained HTML report: TL;DR decisions with named references, chosen-dimension statement, screenshots or an explicit limitation note, product links to their own domains, specific principle citations, SwiftUI sketches with English comments, repo-grounded recommendations naming checked files, limitations section. Plus summary.md with path + brief TL;DR.",
+      "files": [],
+      "assertions": [
+        "[format] A self-contained HTML report exists in outputs/ (opens in a browser with no build step)",
+        "[format] The report opens with a TL;DR of 3-5 actionable decisions, each naming a specific reference",
+        "[format] The report's overview states its scope and which research dimensions were chosen, with a one-line reason",
+        "[format] Report prose is Simplified Chinese; code identifiers AND comments inside code sketches are English",
+        "[format] No <img> references external domains; any screenshots are local files, non-trivial in size, and actually referenced by the report",
+        "[format] A limitations section exists stating the research date and what could not be verified or captured",
+        "[format] summary.md exists with the report path and a brief TL;DR, without duplicating the full report",
+        "[quality] Each named product reference links to the product's own domain (not a round-up article), and the linked page plausibly supports the specific claim next to it (spot-check at least 4)",
+        "[quality] At least 2 principle citations link to specific guideline pages, and each cited rule genuinely supports the adjacent recommendation",
+        "[quality] Repo-grounding: no recommendation proposes something the target project already implements — verify project-specific recommendations against the actual sources; they must name the file they were checked against",
+        "[quality] No internal contradictions: the report's stated principles are not violated by its own code sketches or other recommendations",
+        "[quality] Code sketches are idiomatic and free of invented or misrepresented APIs — verify questionable framework-behavior claims (defaults vs requirements) against official docs",
+        "[quality] The visual dimension includes local screenshots, or the limitations section explicitly explains why none could be captured"
+      ]
+    },
+    {
+      "id": 1,
+      "prompt": "调研一下现在原生 macOS 工具类 app 流行的 UI 风格，我想提升我们 app 的整体品味，给我个报告。",
+      "expected_output": "Same as eval 0, plus: explicit self-chosen scope statement for the vague request, and trend claims carry evidence dates. Iteration-1 failure mode to watch: recommending things the repo already implements.",
+      "files": [],
+      "assertions": ["(same common set as eval 0; scope-statement assertion emphasizes the self-chosen scope; limitations must note trend-evidence dates)"]
+    },
+    {
+      "id": 2,
+      "prompt": "我们准备给产品做个官网 landing page，调研一下优秀开发者工具的官网都怎么做的，重点看排版和动效，结果展示给我。",
+      "expected_output": "Same common set, plus: basic HTML validity of the report, dedicated typography/motion depth per reference, web-stack code sketches, screenshots consistent with the prose describing them, recommendations consistent with HippoLM's positioning.",
+      "files": [],
+      "assertions": ["(same common set as eval 0, plus HTML validity, typography/motion depth, and screenshot-prose consistency)"]
+    }
+  ]
+}

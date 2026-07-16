@@ -1,0 +1,183 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<!--
+  UI research report template.
+  Fill every {{PLACEHOLDER}}. Duplicate .card / figure.shot / .principle blocks as needed;
+  include only the <section> blocks matching the dimensions chosen in Step 2, and keep
+  their ids in the TOC in sync. The limitations section is always required.
+  Set <html lang> to match the report language.
+-->
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>{{TITLE}}</title>
+<style>
+  :root {
+    --bg: #fdfdfc;
+    --surface: #ffffff;
+    --text: #1a1a1a;
+    --text-secondary: #6b6b6b;
+    --border: #e6e4e0;
+    --accent: #4a5568;
+    --code-bg: #f5f4f2;
+  }
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --bg: #141414;
+      --surface: #1d1d1d;
+      --text: #ebebeb;
+      --text-secondary: #9a9a9a;
+      --border: #2e2e2e;
+      --accent: #a0aec0;
+      --code-bg: #242424;
+    }
+  }
+  * { box-sizing: border-box; }
+  body {
+    margin: 0;
+    background: var(--bg);
+    color: var(--text);
+    font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", sans-serif;
+    font-size: 16px;
+    line-height: 1.65;
+    -webkit-font-smoothing: antialiased;
+  }
+  main { max-width: 880px; margin: 0 auto; padding: 64px 24px 96px; }
+  h1 { font-size: 32px; font-weight: 700; letter-spacing: -0.02em; line-height: 1.2; margin: 0 0 8px; }
+  .meta { color: var(--text-secondary); font-size: 14px; margin-bottom: 32px; }
+  h2 {
+    font-size: 22px; font-weight: 650; letter-spacing: -0.01em;
+    margin: 56px 0 16px; padding-top: 24px; border-top: 1px solid var(--border);
+  }
+  h3 { font-size: 16px; font-weight: 600; margin: 24px 0 8px; }
+  p { margin: 0 0 12px; }
+  a { color: inherit; text-decoration-color: var(--text-secondary); text-underline-offset: 3px; }
+  a:hover { text-decoration-color: var(--text); }
+
+  .toc {
+    display: flex; flex-wrap: wrap; gap: 6px 16px;
+    font-size: 14px; color: var(--text-secondary); margin-bottom: 40px;
+  }
+  .toc a { text-decoration: none; }
+  .toc a:hover { color: var(--text); }
+
+  .tldr { background: var(--surface); border: 1px solid var(--border); border-radius: 12px; padding: 20px 24px; }
+  .tldr ol { margin: 0; padding-left: 20px; }
+  .tldr li { margin: 8px 0; }
+  .tldr li strong { font-weight: 600; }
+
+  .card {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 12px; padding: 20px 24px; margin: 16px 0;
+  }
+  .card-title { display: flex; align-items: baseline; gap: 10px; margin-bottom: 6px; }
+  .card-title .name { font-weight: 600; font-size: 16px; }
+  .card-title .link { font-size: 13px; color: var(--text-secondary); }
+  .card .why { color: var(--text-secondary); font-size: 14px; margin-top: 8px; }
+
+  figure.shot { margin: 16px 0; }
+  figure.shot a { display: block; }
+  figure.shot img {
+    width: 100%; border-radius: 8px; border: 1px solid var(--border); display: block;
+  }
+  figure.shot figcaption {
+    font-size: 13px; color: var(--text-secondary); margin-top: 8px; line-height: 1.5;
+  }
+
+  .principle {
+    border-left: 3px solid var(--accent); padding: 4px 0 4px 16px; margin: 16px 0;
+  }
+  .principle .source { font-size: 13px; color: var(--text-secondary); }
+
+  pre {
+    background: var(--code-bg); border: 1px solid var(--border); border-radius: 10px;
+    padding: 16px 20px; overflow-x: auto; font-size: 13.5px; line-height: 1.55;
+    position: relative; margin: 12px 0;
+  }
+  pre[data-lang]::before {
+    content: attr(data-lang);
+    position: absolute; top: 8px; right: 14px;
+    font-size: 11px; color: var(--text-secondary);
+    font-family: -apple-system, BlinkMacSystemFont, sans-serif;
+    text-transform: uppercase; letter-spacing: 0.05em;
+  }
+  code { font-family: ui-monospace, "SF Mono", Menlo, monospace; }
+  p code, li code { background: var(--code-bg); padding: 2px 5px; border-radius: 5px; font-size: 0.88em; }
+
+  .limits { font-size: 14px; color: var(--text-secondary); }
+  .limits ul { padding-left: 20px; }
+</style>
+</head>
+<body>
+<main>
+  <h1>{{TITLE}}</h1>
+  <p class="meta">{{RESEARCH_DATE}} · {{SCOPE_ONE_LINER}} · 维度：{{CHOSEN_DIMENSIONS_AND_ONE_LINE_WHY}}</p>
+
+  <nav class="toc">
+    <!-- Keep in sync with the sections actually included -->
+    <a href="#visual">视觉参考</a>
+    <a href="#motion">交互与动效</a>
+    <a href="#impl">实现建议</a>
+    <a href="#principles">设计原则依据</a>
+    <a href="#limits">限制与置信度</a>
+  </nav>
+
+  <div class="tldr">
+    <ol>
+      <!-- 3-5 actionable decisions, each naming its best reference -->
+      <li><strong>{{DECISION}}</strong> — {{WHY_AND_REFERENCE}}</li>
+    </ol>
+  </div>
+
+  <section id="visual">
+    <h2>视觉参考</h2>
+    <!-- One .card per product. Duplicate freely. Link goes to the product's own page showing this UI. -->
+    <div class="card">
+      <div class="card-title">
+        <span class="name">{{PRODUCT}}</span>
+        <a class="link" href="{{URL_SHOWING_THIS_UI}}">{{DOMAIN}}</a>
+      </div>
+      <p>{{WHAT_SPECIFICALLY_IS_GOOD}}</p>
+      <figure class="shot">
+        <a href="{{LOCAL_SCREENSHOT}}.png"><img src="{{LOCAL_SCREENSHOT}}.png" alt="{{ALT}}"></a>
+        <figcaption>{{PRODUCT}} · {{SOURCE_URL}} · 截取于 {{CAPTURE_DATE}} · {{ONE_VERIFIABLE_OBSERVATION}}</figcaption>
+      </figure>
+      <p class="why">{{WHY_IT_WORKS}}</p>
+    </div>
+  </section>
+
+  <section id="motion">
+    <h2>交互与动效</h2>
+    {{MOTION_FINDINGS — prose + cards as needed}}
+  </section>
+
+  <section id="impl">
+    <h2>实现建议</h2>
+    <!-- Project-specific recommendations must name the file checked, e.g.
+         "现有 SettingsView.swift 已是 grouped Form，无需迁移" -->
+    {{IMPLEMENTATION — prose, evidence links, current-state-of-repo notes, short code sketches}}
+    <pre data-lang="{{swift|css|js}}"><code>{{CODE_SKETCH — comments in English}}</code></pre>
+  </section>
+
+  <section id="principles">
+    <h2>设计原则依据</h2>
+    <!-- One .principle per cited rule. Cite the specific page, next to the recommendation it supports. -->
+    <div class="principle">
+      <p>{{THE_RULE_AND_HOW_IT_APPLIES_HERE}}</p>
+      <p class="source"><a href="{{URL_OF_SPECIFIC_GUIDELINE_PAGE}}">{{SOURCE_NAME — e.g. HIG · Settings}}</a></p>
+    </div>
+  </section>
+
+  <section id="limits">
+    <h2>限制与置信度</h2>
+    <div class="limits">
+      <ul>
+        <li>调研日期：{{RESEARCH_DATE}}；产品界面可能随版本变化。</li>
+        <li>{{WHAT_COULD_NOT_BE_VERIFIED_OR_CAPTURED_AND_WHY — e.g. "Things 3 设置页无公开截图，视觉描述基于官方营销页与评测视频"}}</li>
+        <li>{{LOWER_CONFIDENCE_CLAIMS_IF_ANY}}</li>
+      </ul>
+    </div>
+  </section>
+</main>
+</body>
+</html>
