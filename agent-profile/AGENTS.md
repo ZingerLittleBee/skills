@@ -18,7 +18,7 @@
 
 ## Project Instructions
 
-- Check for the presence of `AGENTS.md` files in the project workspace. There may be additional `AGENTS.md` in sub-folders with specific instructions related to only that part of the codebase.
+- Check for project instruction files (`AGENTS.md`, `CLAUDE.md`, and similar) in the workspace. Sub-folders may carry additional ones scoped to that part of the codebase.
 - On conflict, more specific instructions win: sub-folder instruction files > project instruction files > this profile.
 
 ## Mindset & Process
@@ -28,6 +28,7 @@
 - **No breadcrumbs**. If you delete or move code, do not leave a comment in the old place. No "// moved to X". Just remove it.
 - When taking on new work: think about the architecture, research official docs on the best approach, review the existing codebase, then choose the best fit or ask about the tradeoffs the user is willing to make.
 - Write idiomatic, simple, maintainable code with readable APIs. Prefer clarity over cleverness; always ask if this is the simplest intuitive solution.
+- Opportunistic fixes apply only when the task already involves changing code; on read-only tasks (review, diagnosis, explanation), report what you would fix instead of editing.
 - Leave each repo better than you found it. Fix small papercuts you trip over (broken or noisy scripts, misleading errors, typos, tiny docs drift) without asking; raise larger cleanups (broader refactors, architecture or user-visible behavior changes, new dependencies, substantial new testing) before expanding scope.
 - Clean up unused code ruthlessly: delete dead helpers and unused parameters, and update the callers.
 - **Search before pivoting**. If stuck or uncertain, do a quick web search for official docs or specs, then continue with the current approach; do not change direction unless asked.
@@ -39,13 +40,14 @@
 - For GitHub operations, use the `gh` CLI instead of any GitHub MCP server. Do not install, configure, or rely on a repo-local GitHub MCP. If `gh` is not available in the current environment, tell the user instead of installing local tooling.
 - When inspecting `git status` or `git diff`, treat them as read-only context; never revert or assume missing changes were yours. Other agents or the user may have already committed updates.
 - Never commit secrets (API keys, tokens, `.env` files with real values), and never paste them into commands, logs, or PR/issue text; reference environment variables by name instead.
+- Any action affecting external systems or visible to others (commenting on or closing issues, triggering workflows, creating releases, deploying) requires an explicit user request.
 - If you are ever curious how to run tests or what we test, read through `.github/workflows`; CI runs everything there and it should behave the same locally.
 
 ## Git Commits & Pull Requests
 
 ### Commit policy
 
-- Creating commits is authorized by default. Run the minimum necessary `git add` and `git commit` commands without asking.
+- Creating commits is authorized by default; run the minimum necessary `git add` and `git commit` without asking. Stage only changes from your own current work, and commit only after the relevant checks pass.
 - Commit as soon as a feature is implemented or a fix is done. One logical unit of work = one commit.
 - Prefer NOT to combine multiple units of work into a single commit, but it is not forbidden. Use judgment: scattered small files or trivial miscellaneous changes may be grouped when separate commits would only add noise.
 - Follow the repo's branching convention. If the repo works PR-based (history is mostly merge/PR commits), create a feature branch before committing instead of committing directly to `main`/`master`; creating that branch is authorized, same as committing. If the repo's history shows direct commits to the default branch (personal projects, config/dotfiles repos), committing directly to it is fine. When unsure, prefer a feature branch.
@@ -69,7 +71,7 @@
 
 - Avoid mocking what you can exercise for real; prefer unit or e2e tests against real behavior. Mocks invent behaviors that never happen in production and hide the real bugs that do. Mocking at true external boundaries (network, third-party services) is acceptable when the real thing cannot run in tests.
 - Test everything with rigor. Our intent is ensuring a new person contributing to the same code base cannot break our stuff and that nothing slips by. We love rigour.
-- Unless the user asks otherwise, run only the tests you added or modified instead of the entire suite to avoid wasting time.
+- Unless the user asks otherwise, run the tests covering your changes (including existing ones) instead of the entire suite, to avoid wasting time.
 
 ## Language Guidance
 
@@ -102,11 +104,11 @@
 - Keep components small, focused, and reusable. Prefer reusable components, hooks, and helpers in their own files instead of giant multi-purpose components or mega files.
 - Prefer composition and clear data flow over prop soup, duplicated state, and clever abstractions that nobody wants to debug later.
 - Reuse the repo's existing design system, primitives, and styling patterns first. If there is no design system yet, build one from shared tokens and reusable primitives, and prefer mature accessible building blocks over reinventing common widgets from scratch.
-- If a repo is Rust + React/TypeScript, Rust is the source of truth for shared API and domain types. Use `ts-rs` to generate TypeScript bindings from Rust types instead of hand-maintaining duplicate interfaces.
+- If a repo is Rust + React/TypeScript, Rust is the source of truth for shared API and domain types. Follow the repo's existing type-generation setup (OpenAPI, protobuf, etc.); for new projects use `ts-rs` to generate TypeScript bindings instead of hand-maintaining duplicate interfaces.
 
 ### Python
 
-- Rarely used here. When touching a Python repo: `uv` + `pyproject.toml` (no `pip` venvs, Poetry, or `requirements.txt` unless asked), type hints everywhere, explicit models over loose dicts.
+- Rarely used here. Follow an existing repo's toolchain; for new projects default to `uv` + `pyproject.toml` (no `pip` venvs, Poetry, or `requirements.txt`). Type hints everywhere, explicit models over loose dicts.
 
 ## Dependencies & External APIs
 
