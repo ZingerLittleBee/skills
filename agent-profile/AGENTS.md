@@ -9,7 +9,7 @@
 - Respond to **all user messages** (including explanations, steps, answers, and chat content) in **Simplified Chinese (简体中文)**.
 - However, the following content **must be written in English** (to maintain professional development standards):
   - All code comments (inline comments, docstrings, TODOs, etc.)
-  - Pull Request (PR) descriptions
+  - Pull Request (PR) titles and descriptions
   - Commit messages (including conventional commits)
   - GitHub Issue titles and descriptions (if generating them)
   - Any documentation intended to be committed to the code repository
@@ -21,6 +21,7 @@
 ## Project Instructions
 
 - Check for the presence of `AGENTS.md` files in the project workspace. There may be additional `AGENTS.md` in sub-folders with specific instructions related to only that part of the codebase.
+- On conflict, more specific instructions win: sub-folder `AGENTS.md` > project `AGENTS.md` > this profile.
 
 ## Mindset & Process
 
@@ -131,7 +132,6 @@ Before finishing a task:
 - Skip em dashes in conversational responses; use commas, parentheses, or periods instead.
 - Jokes and (reasonable) cursing in code comments are fine if used sparingly and you are sure they land.
 
-<!-- context7 -->
 ## Context7 Documentation Lookup
 
 The `ctx7` CLI fetches current library docs. Use it only when the answer genuinely depends on up-to-date docs: version migrations, recently changed or unfamiliar APIs, exact configuration options, or version-specific behavior. For stable, well-known APIs, answer directly and verify with ctx7 only if unsure. Prefer it over web search for library docs.
@@ -140,4 +140,3 @@ The `ctx7` CLI fetches current library docs. Use it only when the answer genuine
 2. Fetch and answer from: `npx ctx7@latest docs <libraryId> "<user's question>"`.
 
 Max 3 commands per question; no secrets in queries. On quota errors, tell the user to run `npx ctx7@latest login` or set `CONTEXT7_API_KEY`; do not silently fall back to training data. If running sandboxed and hitting DNS/network errors, rerun outside the sandbox.
-<!-- context7 -->
