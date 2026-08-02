@@ -2,7 +2,7 @@
 name: publish-release
 description: |
   Release convention: cut CHANGELOG's [Unreleased] with
-  `make publish [VERSION]`. Use when asked to publish a release
+  `make publish`. Use when asked to publish a release
   ("发布"), when setting up or fixing a repo's release pipeline, or
   before writing any bespoke version-bump script — this is the
   standard that script must implement.
@@ -10,7 +10,7 @@ description: |
 
 # Publish Release
 
-One command cuts a release: `make publish [VERSION]`.
+One command cuts a release: `make publish`.
 
 `CHANGELOG.md` is the source. It holds both the version being cut and
 the notes that ship with it; everything else is derived from it.
@@ -57,15 +57,21 @@ lockfile: [`references/authoring.md`](references/authoring.md).
 ## The `make publish` contract
 
 ```bash
-make publish            # patch bump: 1.4.2 -> 1.4.3
-make publish 2.0.0      # explicit version
-make publish --dry-run  # print the plan, change nothing
+make publish                  # patch bump: 1.4.2 -> 1.4.3
+make publish VERSION=2.0.0    # explicit version
+make publish DRY_RUN=1        # print the plan, change nothing
+make publish YES=1            # skip the confirmation prompt
 ```
+
+Options are make variables, not flags, because flags cannot reach the
+recipe: make consumes `--dry-run` as its own `-n` (printing the recipe
+instead of running it) and rejects unknown long options outright.
 
 ### Version resolution
 
-1. An explicit argument wins. Strip a leading `v`. Reject anything that
-   is not `X.Y.Z`.
+1. An explicit `VERSION=` wins. Strip a leading `v`. Reject anything
+   that is not `X.Y.Z` — prereleases like `1.0.0-rc.1` are out of
+   scope for this convention.
 2. Otherwise take the newest released `## [X.Y.Z]` heading in
    `CHANGELOG.md` and increment the patch segment.
 3. Cross-check that heading against the newest `vX.Y.Z` git tag. If
@@ -124,9 +130,9 @@ Release notes (from CHANGELOG [Unreleased]):
 Proceed? [y/N]
 ```
 
-`--dry-run` prints exactly this and exits 0 without touching anything.
-`--yes` skips the prompt, for a non-interactive run of a plan already
-reviewed with `--dry-run`.
+`DRY_RUN=1` prints exactly this and exits 0 without touching anything.
+`YES=1` skips the prompt, for a non-interactive run of a plan already
+reviewed with `DRY_RUN=1`.
 
 ## Setting this up in a repo
 

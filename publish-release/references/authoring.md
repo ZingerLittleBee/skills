@@ -81,8 +81,11 @@ Both modes use an annotated tag (`git tag -a`).
    file lists into the script explicitly. A script that names its files
    is easier to review than one that globs at runtime.
 3. Choose the publish mode and say why in a comment.
-4. Add `publish` to the `Makefile`, forwarding arguments.
-5. Run `make publish --dry-run` before the first real run, and confirm
+4. Add `publish` to the `Makefile`, passing options through as make
+   variables (`$(VERSION)`, `$(DRY_RUN)`, `$(YES)`). Flags do not work
+   here: make consumes `--dry-run` as its own `-n` and rejects unknown
+   long options, so a flag never reaches the recipe.
+5. Run `make publish DRY_RUN=1` before the first real run, and confirm
    the printed version, branch, and notes are what you expect.
 6. Write the release procedure into the repo's own docs. This skill is
    the standard; the repo documents its instance of it.

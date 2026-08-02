@@ -25,11 +25,12 @@ jobs:
           version="${GITHUB_REF_NAME#v}"
           # Print the body of `## [X.Y.Z]` up to the next `## [` heading.
           awk -v v="$version" '
+            BEGIN { gsub(/\./, "\\.", v) }
             $0 ~ "^## \\[" v "\\]" { found = 1; next }
             found && /^## \[/       { exit }
             found                    { print }
           ' CHANGELOG.md > /tmp/notes.md
-          # Drop link-reference lines and leading/trailing blanks.
+          # Drop link-reference lines and leading blank lines.
           sed -i -E "/^\[$version\]:/d" /tmp/notes.md
           sed -i -e '/./,$!d' /tmp/notes.md
           if [ ! -s /tmp/notes.md ]; then
