@@ -1,0 +1,56 @@
+# Mode 1 reference: tag-triggered release.
+#
+# `make publish` pushes vX.Y.Z and stops; this workflow does the rest.
+# Adapt the build job to the project. The notes job is the part that
+# matters and should be copied as-is: release bodies come from the
+# CHANGELOG section for the tag, never from commit messages.
+
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+
+permissions:
+  contents: write
+
+jobs:
+  release:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Extract release notes from CHANGELOG
+        id: notes
+        run: |
+          set -euo pipefail
+          version="${GITHUB_REF_NAME#v}"
+          # Print the body of `## [X.Y.Z]` up to the next `## [` heading.
+          awk -v v="$version" '
+            $0 ~ "^## \\[" v "\\]" { found = 1; next }
+            found && /^## \[/       { exit }
+            found                    { print }
+          ' CHANGELOG.md > /tmp/notes.md
+          # Drop link-reference lines and leading/trailing blanks.
+          sed -i -E "/^\[$version\]:/d" /tmp/notes.md
+          sed -i -e '/./,$!d' /tmp/notes.md
+          if [ ! -s /tmp/notes.md ]; then
+            echo "::error::no CHANGELOG section for $version" >&2
+            exit 1
+          fi
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+
+      # --- Build artifacts here. Upload whatever the project ships. ---
+      # - name: Build
+      #   run: make build
+      # - uses: actions/upload-artifact@v4
+      #   with: { name: dist, path: dist/ }
+
+      - name: Create GitHub release
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh release create "$GITHUB_REF_NAME" \
+            --title "$GITHUB_REF_NAME" \
+            --notes-file /tmp/notes.md
+            # --- append built artifact paths here ---

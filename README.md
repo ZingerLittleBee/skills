@@ -19,6 +19,7 @@ Add `-g` to install globally (user-level) and `-y` to skip confirmation prompts.
 | Skill | Description |
 |---|---|
 | [`dispatch-tickets`](dispatch-tickets/) | Run a set of tracker tickets to completion in one session: a dispatcher main agent spawns a fresh implementer subagent per ticket in dependency order, verifies each result, and closes tickets; simple tickets go to a cheaper model. Invoke with `/dispatch-tickets #N #N …` or `parent=#N`. |
+| [`publish-release`](publish-release/) | The release convention: unreleased work accumulates under CHANGELOG's `[Unreleased]` heading, and one `make publish [VERSION]` cuts it — renaming the section, propagating the version across every ecosystem in the repo, regenerating lockfiles by command, tagging, and releasing via GitHub Actions or a local build. Prints the whole plan and asks before mutating anything. |
 | [`implement-codex`](implement-codex/) | Implement a PRD or set of issues by delegating the coding to Codex (`gpt-5.6-sol`, xhigh reasoning): Claude briefs, verifies, reviews, and commits. Invoke with `/implement-codex`. |
 | [`testloop`](testloop/) | Drive a Claude ↔ Codex GUI test-fix loop with `gpt-5.6-terra`: the main agent builds, installs, and launches the app and plans/judges/fixes, while Codex drives the running app via computer use to execute the test plan. Invoke with `/testloop [scope]`. |
 | [`ui-research`](ui-research/) | Research how excellent products design and implement a piece of UI (visual references, motion, implementation, principles) and present an evidence-backed local HTML report with screenshots; greps the current repo before recommending anything. Triggers automatically on UI-research-shaped requests. |
@@ -29,6 +30,7 @@ Add `-g` to install globally (user-level) and `-y` to skip confirmation prompts.
 ```bash
 npx skills add ZingerLittleBee/skills@dispatch-tickets
 npx skills add ZingerLittleBee/skills@implement-codex
+npx skills add ZingerLittleBee/skills@publish-release
 npx skills add ZingerLittleBee/skills@testloop
 npx skills add ZingerLittleBee/skills@ui-research
 npx skills add ZingerLittleBee/skills@writing-x-zh-briefs
