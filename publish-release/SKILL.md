@@ -100,6 +100,14 @@ instead of running it) and rejects unknown long options outright.
 
 Steps 5–7 mutate shared state. See *Plan and confirm*.
 
+Step 6 pushes the release commit straight to the default branch, on
+purpose: the commit is mechanical, already reviewed line-by-line in the
+plan, and the tag must point at the exact SHA on that branch — a PR
+merge would change it. This assumes the branch accepts direct pushes.
+Branch protection that forces PRs is a server-side rule preflight
+cannot see; a repo under it needs a release-PR variant, which is out
+of scope for this convention.
+
 If a step after the tag push fails, report that precisely and name the
 tag: recovery is `gh release create` against the existing tag, not a
 re-run of the whole flow.
