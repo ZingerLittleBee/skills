@@ -1,9 +1,7 @@
 # Mode 1 reference: tag-triggered release.
 #
 # `make publish` pushes vX.Y.Z and stops; this workflow does the rest.
-# Adapt the build job to the project. The notes job is the part that
-# matters and should be copied as-is: release bodies come from the
-# CHANGELOG section for the tag, never from commit messages.
+# Adapt the build job to the project; copy the notes step as-is.
 
 name: Release
 
