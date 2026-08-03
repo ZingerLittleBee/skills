@@ -87,6 +87,5 @@ This is the user-level instruction source shared across Claude Code, Codex, Open
 
 ## Context7
 
-- Use `ctx7` instead of web search when the answer depends on current, unfamiliar, or version-specific library documentation. For stable APIs, answer directly unless uncertain.
-- Resolve with `npx ctx7@latest library <name> "<question>"` (append `/version` when needed), then fetch with `npx ctx7@latest docs <libraryId> "<question>"`.
-- Run at most three Context7 commands per question and never include secrets. On quota errors, ask the user to run `npx ctx7@latest login` or set `CONTEXT7_API_KEY` rather than silently falling back to model knowledge; for sandbox DNS failures, retry outside the sandbox.
+- Prefer `ctx7` over web search for current, unfamiliar, or version-specific library documentation; otherwise answer directly.
+- Run `npx ctx7@latest library <name> "<question>"` (append `/version` when needed), then `npx ctx7@latest docs <libraryId> "<question>"`. Use at most three commands and no secrets; on quota errors, request login or `CONTEXT7_API_KEY` instead of falling back to model knowledge, and retry sandbox DNS failures outside the sandbox.
