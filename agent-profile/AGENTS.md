@@ -88,4 +88,4 @@ This is the user-level instruction source shared across Claude Code, Codex, Open
 ## Context7
 
 - Prefer `ctx7` over web search for current, unfamiliar, or version-specific library documentation; otherwise answer directly.
-- Run `npx ctx7@latest library <name> "<question>"` (append `/version` when needed), then `npx ctx7@latest docs <libraryId> "<question>"`. Use at most three commands and no secrets; on quota errors, request login or `CONTEXT7_API_KEY` instead of falling back to model knowledge, and retry sandbox DNS failures outside the sandbox.
+- Run `npx ctx7@latest library <name> "<question>"` (append `/version` when needed), then `npx ctx7@latest docs <libraryId> "<question>"`. Use at most three commands and never include secrets.
