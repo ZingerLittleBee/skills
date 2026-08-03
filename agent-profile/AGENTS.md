@@ -34,7 +34,7 @@ This is the user-level instruction source shared across Claude Code, Codex, Open
 
 - Local commits are authorized by default. Stage and commit only changes from the current task.
 - Use one logical unit per commit when practical. Commit completed units promptly, but run verification once near the end instead of before every commit.
-- Follow the repository's established branching convention. Use a feature branch for PR-oriented repositories and direct commits for repositories that normally commit to the default branch; when unclear, prefer a feature branch.
+- Commit to the current branch unless the user explicitly requests a new branch.
 - Pushing, opening PRs, rebasing, force-pushing, destructive Git operations, and other Git writes beyond local commits or feature-branch creation require explicit authorization.
 - Use Conventional Commits with `feat`, `fix`, `chore`, `refactor`, `docs`, `test`, `perf`, `build`, `ci`, `style`, or `revert`. Write an imperative, lowercase subject no longer than 72 characters; add a body only when the rationale is not obvious from the diff.
 - Never add `Co-Authored-By:` trailers, generation signatures, or tool watermarks.
