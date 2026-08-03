@@ -1,7 +1,5 @@
 # Shared Agent Profile
 
-This is the user-level instruction source shared across Claude Code, Codex, OpenCode, and Droid. The canonical copy is `agent-profile/AGENTS.md` in the ZingerLittleBee/skills repository.
-
 ## Language
 
 - Respond in Simplified Chinese unless the user explicitly requests another language.
