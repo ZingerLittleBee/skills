@@ -40,9 +40,8 @@ The optional argument after `/testloop` is the **scope** to focus this run
 
 `.testloop/config.yaml` and `.testloop/project.md` are the loop's inputs. If
 either is missing, follow [setup.md](setup.md) — scaffold both from its
-templates, fill in real values (for desktop apps it explains why `build_cmd`
-must install a real app, not start a dev server), and return here once the user
-has confirmed `build_cmd` and `codex_cmd`.
+templates, fill in real values, and return here once the user has confirmed
+`build_cmd` and `codex_cmd`.
 
 If the files already exist, read both for context and go straight to the loop.
 
@@ -152,8 +151,8 @@ buffered).
 
 ### 3. Judge
 
-Read `.testloop/test-results.md` and classify the round out loud as exactly one
-of:
+Read `.testloop/test-results.md` and classify the round out loud — naming any
+failing steps — as exactly one of:
 
 - **pass** — every step passed. The loop is done; report success and wrap up
   (step 6).
@@ -168,8 +167,6 @@ of:
   cannot corroborate it in code, do not loop again — choose **human**.
 - **human** — you cannot confidently tell whether this is a real bug or expected
   behavior. Stop, explain the ambiguity, and ask the user to decide.
-
-State the failing steps and your reasoning.
 
 ### 4. Fix
 
@@ -202,8 +199,8 @@ stop that the user does not continue from — goes through this step.
 The other `.testloop/` files are git-ignored scratch, so without this step a run
 leaves no trace in the repo. Distill the run into
 `.testloop/reports/<date>-<scope>.md` (date from `date +%F`; slugify the scope,
-or `broad` when none) — `reports/` is the one subdirectory that setup keeps
-tracked in git.
+or `broad` when none) — `reports/` is committed; setup arranges the
+`.gitignore` pattern.
 
 Write the report from your own understanding of the run — do **not** paste from
 `test-results.md` or the Codex log. Raw artifacts can carry whatever happened to
@@ -296,5 +293,4 @@ Incorporate this answer and proceed.
 | `iterations/round-N/` | you (step 5) | per-round snapshot |
 | `reports/<date>-<scope>.md` | you (step 6) | committed run report: covered / fixed / still open |
 
-Everything except `reports/` is scratch; setup offers a `.gitignore` pattern
-that ignores the directory but keeps `reports/` tracked.
+Everything except `reports/` is scratch.
