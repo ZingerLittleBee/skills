@@ -155,7 +155,8 @@ buffered).
 Read `.testloop/test-results.md` and classify the round out loud as exactly one
 of:
 
-- **pass** — every step passed. The loop is done; report success and stop.
+- **pass** — every step passed. The loop is done; report success and wrap up
+  (step 6).
 - **code-fix** — a real bug in the app code; go to step 4. Before choosing this
   verdict, **corroborate** the FAIL in the source: locate the code path that
   plausibly produces the reported behavior. If you cannot, do not fix blind —
@@ -189,9 +190,49 @@ cp .testloop/test-plan.md .testloop/test-results.md .testloop/iterations/round-N
 
 (Replace `N` with the round number.)
 
-Increment `N`. If `N` exceeds `max_rounds`, stop and summarize what still fails
-and what you tried. Otherwise start a new round at step 1, re-testing any fix and
-watching for regressions.
+Increment `N`. If `N` exceeds `max_rounds`, summarize what still fails and what
+you tried, then wrap up (step 6). Otherwise start a new round at step 1,
+re-testing any fix and watching for regressions.
+
+### 6. Wrap up — leave a run report
+
+Every path that ends the run — **pass**, `max_rounds` exhausted, or a **human**
+stop that the user does not continue from — goes through this step.
+
+The other `.testloop/` files are git-ignored scratch, so without this step a run
+leaves no trace in the repo. Distill the run into
+`.testloop/reports/<date>-<scope>.md` (date from `date +%F`; slugify the scope,
+or `broad` when none) — `reports/` is the one subdirectory that setup keeps
+tracked in git.
+
+Write the report from your own understanding of the run — do **not** paste from
+`test-results.md` or the Codex log. Raw artifacts can carry whatever happened to
+be on screen or in output: tokens, emails, account names, absolute home paths.
+None of that belongs in a committed file; if a credential is relevant, refer to
+it by its environment-variable name.
+
+Keep it under a page. A reader months from now wants to know what was covered
+and what came of it — not a step-by-step transcript:
+
+```markdown
+# testloop — <date> — <scope or broad>
+
+**Verdict:** pass | stopped: <why> · **Rounds:** N
+
+## Covered
+<2-5 bullets: the surfaces and flows exercised>
+
+## Found & fixed
+<one bullet per bug: symptom → root cause → fix in `path/file`; or "none">
+
+## Still open
+<unfixed failures, flaky steps, questions left for the user; or "none">
+```
+
+If the run also taught you something durable about building or driving the app,
+fold that into `project.md` / `config.yaml` — the report records history; those
+files shape future rounds. If you commit fixes from this run, include the report
+in the same commit.
 
 ## Prompt handed to Codex
 
@@ -253,5 +294,7 @@ Incorporate this answer and proceed.
 | `decision.json` | Codex | an escalated question when Codex can't decide |
 | `decision-answer.txt` | you | the user's answer to a `decision.json` |
 | `iterations/round-N/` | you (step 5) | per-round snapshot |
+| `reports/<date>-<scope>.md` | you (step 6) | committed run report: covered / fixed / still open |
 
-These are scratch artifacts; setup offers to add `.testloop/` to `.gitignore`.
+Everything except `reports/` is scratch; setup offers a `.gitignore` pattern
+that ignores the directory but keeps `reports/` tracked.

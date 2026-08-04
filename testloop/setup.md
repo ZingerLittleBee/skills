@@ -16,9 +16,20 @@ values.
    - `project.md`: overview, structure, how to launch, how to test, gotchas.
 3. **Show the user the filled-in `config.yaml` and confirm** the `build_cmd` and
    `codex_cmd` before continuing.
-4. The `.testloop/` files are scratch artifacts — if the directory is not
-   already git-ignored, offer to add `.testloop/` to the project's `.gitignore`
-   so runs don't clutter the user's working tree.
+4. Most `.testloop/` files are scratch artifacts, but the loop's final step
+   writes a concise per-run report to `.testloop/reports/` that is meant to be
+   committed. Offer to add this to the project's `.gitignore`:
+
+   ```gitignore
+   .testloop/*
+   !.testloop/reports/
+   ```
+
+   Ignoring `.testloop/*` (the contents) instead of `.testloop/` (the directory)
+   is what makes the `!` re-include work — git never descends into a fully
+   ignored directory. If the project already ignores `.testloop/` from an
+   earlier setup, update it to this pattern, or reports will silently stay
+   untracked.
 
 ## Desktop apps — install a real build, don't use a dev server
 
