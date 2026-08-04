@@ -200,7 +200,12 @@ The other `.testloop/` files are git-ignored scratch, so without this step a run
 leaves no trace in the repo. Distill the run into
 `.testloop/reports/<date>-<scope>.md` (date from `date +%F`; slugify the scope,
 or `broad` when none) — `reports/` is committed; setup arranges the
-`.gitignore` pattern.
+`.gitignore` pattern. Projects set up before reports existed still ignore all
+of `.testloop/`, so confirm git will actually track the report:
+
+```bash
+git check-ignore -q .testloop/reports/probe && echo "ignored — update .gitignore to the pattern in setup.md"
+```
 
 Write the report from your own understanding of the run — do **not** paste from
 `test-results.md` or the Codex log. Raw artifacts can carry whatever happened to
