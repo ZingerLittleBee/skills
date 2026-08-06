@@ -40,8 +40,9 @@ Group the requested tasks into packages that can genuinely run in parallel:
 - One package = one branch = one PR = one agent. Keep each package small
   enough that a single agent finishes it in one sitting.
 - Minimize file overlap between packages. Where two packages must touch the
-  same file, note it as a merge risk up front — a shared *base* commit
-  merges cleanly, but two packages editing the same lines will not.
+  same file, note it as a merge risk up front and decide their PR merge
+  order now — a shared *base* commit merges cleanly, but two packages
+  editing the same lines will not.
 - Write down, per package: scope, acceptance criteria, the design or spec
   references the agent must read, and a difficulty grade.
 
@@ -52,8 +53,13 @@ the user already said to run unattended).
 ## 3. One worktree per package
 
 ```bash
-herdr worktree create --cwd "$PWD" --branch feat/<slug> --label <slug> --no-focus
+herdr worktree create --cwd "$PWD" --branch feat/<slug> --base <sha> --label <slug> --no-focus
 ```
+
+Pin every package to the same `--base` commit (the default branch's head at
+round start) and record that sha: it keeps packages from drifting apart if
+the default branch moves mid-round, and it is the **baseline** every later
+verification diffs against.
 
 Read the workspace id and root pane id from the JSON. Then make the worktree
 actually buildable before starting an agent in it:
@@ -84,8 +90,23 @@ status board.
 
 ## 5. Brief each agent
 
-Send the brief with `herdr agent prompt <name> "<brief>"`. Do **not** use
-`--wait` — these are long turns; you'll poll instead. The brief must carry:
+A real brief is too long to push through a terminal. Write it as a Markdown
+file in the OS temp directory — one per package, e.g.
+`$TMPDIR/herdr-fleet-<slug>.md` — and make the prompt a one-liner pointing
+at it:
+
+```bash
+herdr agent prompt <slug> "Read $TMPDIR/herdr-fleet-<slug>.md and complete the package it describes."
+```
+
+Long text sent through `agent prompt` risks wrapping and paste-mode
+mangling, and a file survives for re-briefing after a crash or a swallowed
+prompt. Write the file with the same discipline as a handoff document:
+self-contained, referencing specs and code by path instead of inlining
+them, and with secrets redacted — the agent's pane is visible to anyone at
+the screen.
+
+The brief must carry:
 
 - The package scope and acceptance criteria, plus pointers to the repo's
   convention files (CLAUDE.md / AGENTS.md), glossary, and any design specs —
@@ -118,6 +139,17 @@ Known traps and how to handle them:
 - **`blocked`** means the agent is showing an approval or question UI. Read
   the screen before acting; answer with `herdr agent prompt` for free-text
   questions or `herdr agent send-keys <name> <key>` for menu-style prompts.
+- **Alternate-screen output is unrecoverable.** Agents that render on the
+  terminal's alternate screen never feed scrolled-off rows into herdr's
+  scrollback, so raising `--lines` cannot recover a long finished reply.
+  When a read comes back truncated, ask the agent to write its complete
+  report to a temp Markdown file and reply with only the path, then read
+  the file directly.
+- **A vanished agent is not a finished agent.** If a name disappears from
+  `herdr agent list` and the pane is back at a shell, the agent exited or
+  crashed. Check `git log` in the worktree for what actually landed, then
+  `herdr agent start` a fresh agent in the same pane and re-brief it with
+  what is already committed.
 - Never send a new prompt to a `working` agent — it lands mid-turn and
   corrupts the run. Wait for `idle`/`done`/`blocked`.
 
@@ -126,12 +158,18 @@ Known traps and how to handle them:
 When an agent settles, review its work yourself in the worktree — read
 `git log`/`git diff` against the package's acceptance criteria and the
 design references. You read; you never edit. Send findings back as a
-numbered review prompt and wait for the fix. Loop until the diff is clean;
+numbered review prompt and wait for the fix; review feedback that runs long
+goes into a temp file exactly like the brief. Loop until the diff is clean;
 budget 2 review rounds per package, then either accept with documented
-caveats or drop the package from the round and say why.
+caveats or drop the package from the round and say why. A dropped package's
+worktree and branch stay in place for the user to inspect — its work exists
+nowhere else — but its agent gets shut down like any finished one (step 9).
 
-Verify with git, not with the agent's self-report: uncommitted leftovers in
-the worktree mean the brief wasn't followed even if the summary reads well.
+Verify with git, not with the agent's self-report: `git log <base-sha>..HEAD`
+in the worktree is the complete set of commits the package produced, and
+`git diff <base-sha>..HEAD` is the diff you review — taken from git, never
+from the agent's summary. Uncommitted leftovers (`git status`) mean the
+brief wasn't followed even if the summary reads well.
 
 ## 8. Validate serially
 
@@ -151,7 +189,21 @@ gh pr create --head feat/<slug> --title "<conventional title>" --body "<summary 
 ```
 
 PR titles and bodies in English, Conventional-Commit style titles, no
-watermarks. Report all PR URLs to the user and stop — do not merge.
+watermarks. If two packages touch the same files, state the agreed merge
+order in both PR bodies and in your report — the later PR gets rebased once
+the earlier one lands, rather than trusting the three-way merge.
+
+**Then shut the finished agent down promptly.** An agent left running after
+its package is done keeps a live session holding your repo context and
+credentials, keeps occupying a subscription seat, and will act on any stray
+input that reaches its pane. Ask it to quit with its own exit command
+(`/exit`, `/quit`, or ctrl+c / ctrl+d via `herdr agent send-keys`), then
+confirm the name is gone from `herdr agent list` and the pane is back at a
+shell prompt. Keep the pane and the worktree — if PR feedback later needs
+fixes, start a fresh agent in the same pane and point it at the brief file
+plus the committed diff.
+
+Report all PR URLs to the user and stop — do not merge.
 
 ## 10. After the merge: clean up and re-verify
 
@@ -171,4 +223,5 @@ When the user says the PRs are merged:
 
 Red lines for the whole round: the orchestrator never edits source; never
 run two heavy builds concurrently; never merge a PR; never force-remove a
-worktree with unmerged work; never let an agent push.
+worktree with unmerged work; never let an agent push; never leave a
+finished agent running.
