@@ -1,6 +1,6 @@
 ---
 name: herdr-fleet
-description: "Run one round of parallel implementation across multiple CLI coding agents (claude, codex, droid, grok, …) in herdr-managed git worktrees. The main session is a pure orchestrator: it packages the backlog, creates one worktree per package, assigns each package to an agent kind by difficulty, monitors and reviews, validates serially, opens one PR per package, and removes worktrees after merge. Invoke with /herdr-fleet <tasks or backlog description>."
+description: "Run one round of parallel implementation across multiple CLI coding agents (claude, codex, droid, grok, …) in herdr-managed git worktrees. The main session is a pure orchestrator: it packages the backlog, creates one worktree per package, assigns each package to an agent kind by difficulty, watches progress, grades diffs with reviewer subagents, validates serially, opens one PR per package, and removes worktrees after merge. Invoke with /herdr-fleet <tasks or backlog description>."
 disable-model-invocation: true
 ---
 
@@ -24,6 +24,9 @@ babysitting packages A through M, and no two writers ever share a checkout.
 - Run `herdr agent` once to see which agent kinds are installed. Ask the user
   which subscriptions to use if they haven't said; a kind that isn't
   installed cannot be assigned.
+- `gh auth status` must succeed — the round ends by pushing branches and
+  opening PRs through the gh CLI, and discovering broken auth only then
+  wastes the whole round.
 - This is a long, hands-off run. If the session isn't in an auto-accepting
   permission mode, warn that every approval prompt stalls the round.
 
@@ -155,7 +158,8 @@ Known traps and how to handle them:
 
 - **Swallowed first prompt.** Some agents (droid, notably) eat a prompt sent
   during their startup/welcome screen. If an agent is `idle` shortly after
-  start with no meaningful output, re-send the brief.
+  start with no meaningful output, re-send the pointer prompt — the brief
+  file is still on disk, which is one reason it is a file.
 - **`blocked`** means the agent is showing an approval or question UI. Read
   the screen before acting; answer with `herdr agent prompt` for free-text
   questions or `herdr agent send-keys <name> <key>` for menu-style prompts.
@@ -215,7 +219,8 @@ one (step 9).
 Only after a package passes review, run the repo's real build and test
 commands **in that worktree, one worktree at a time** — never two at once.
 On failure, send the owning agent the verbatim failing output (not your
-paraphrase) and re-validate after the fix.
+paraphrase) and re-validate after the fix; failing output that runs long
+goes into a temp file like everything else you send an agent.
 
 ## 9. One PR per package
 
@@ -248,16 +253,24 @@ Report all PR URLs to the user and stop — do not merge.
 
 When the user says the PRs are merged:
 
-1. Pull the default branch in the main repo.
-2. Delete the local package branches; confirm the remote branches are gone
-   (`git fetch --prune`).
-3. Remove each worktree: `herdr worktree remove --workspace <id> --force` —
-   but only after confirming its commits are reachable from the merged
-   default branch. A worktree holding unmerged unique commits never gets
+1. Confirm it per PR: `gh pr view <n> --json state` must report `MERGED`.
+   This is the authority regardless of merge strategy — a squash merge
+   rewrites the package commits, so "commits not reachable from the
+   default branch" is **not** evidence of unmerged work once the PR
+   reports MERGED.
+2. Pull the default branch in the main repo.
+3. Remove each worktree whose PR is MERGED:
+   `herdr worktree remove --workspace <id> --force`. A worktree whose PR
+   is not merged and whose commits exist nowhere else never gets
    force-removed; surface it instead.
-4. Run the full validation suite once on merged main — per-package runs
+4. Delete the local package branches — worktrees first, branches second:
+   git refuses to delete a branch that is still checked out in a
+   worktree. After a squash merge `git branch -d` still counts the branch
+   unmerged, so use `-D` once step 1 confirmed the PR. Then
+   `git fetch --prune` to confirm the remotes are gone.
+5. Run the full validation suite once on merged main — per-package runs
    don't cover cross-package interaction; this is where it shows up.
-5. Final report: per package — branch, PR, review rounds used, validation
+6. Final report: per package — branch, PR, review rounds used, validation
    evidence — plus anything left over.
 
 Red lines for the whole round: the orchestrator never edits source and
