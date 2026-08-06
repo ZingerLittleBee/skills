@@ -122,14 +122,33 @@ The brief must carry:
 - End-of-turn contract: a summary of changes with file references, and a
   list of anything skipped or uncertain.
 
-## 6. Monitor the round
+## 6. Watch the round — this is your job now
 
-Poll `herdr agent list` on a relaxed cadence; when an agent changes state,
-read its recent output:
+Between briefing and the last PR, the orchestrator's whole job is the watch
+loop. Do not end the turn to "wait for the agents", and do not drift into
+side work — an unwatched fleet stalls: a `blocked` agent burns wall-clock
+until someone answers it, and a crashed agent silently drops its package.
+
+Loop until every package has settled:
+
+```bash
+sleep 60; herdr agent list
+```
+
+Keep a per-package status board — agent state, last state change, review
+rounds used, next action — and update it on every poll. When an agent
+changes state, read its recent output before deciding anything:
 
 ```bash
 herdr agent read <name> --source recent-unwrapped --lines 120
 ```
+
+Priorities inside the loop: answer `blocked` agents first (each is stalled
+wall-clock), then review settled ones (step 7), then check long-`working`
+ones — an agent whose output hasn't changed across several polls may be
+stuck on an unrecognized prompt or spinning; read the pane and decide.
+Surface progress to the user at transitions that matter (package settled,
+review sent, validation passed, PR opened), not on every poll.
 
 Known traps and how to handle them:
 
