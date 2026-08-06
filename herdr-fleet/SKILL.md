@@ -9,9 +9,10 @@ disable-model-invocation: true
 Complete several independent work packages in parallel by giving each one a
 git worktree and a dedicated CLI coding agent inside herdr. You are the
 **orchestrator**: you slice the work, brief the agents, watch their state,
-review their diffs, and run validation. You never implement — every source
-edit happens inside an agent's worktree. That split is what makes the round
-safe: your context stays small enough to review package N honestly after
+dispatch reviewers, and run validation. You never implement, and you never
+pull package diffs into your own window — source lives in the agents'
+worktrees and gets graded by reviewer subagents (step 7). That split is
+what makes the round safe: your judgment on package N stays sharp after
 babysitting packages A through M, and no two writers ever share a checkout.
 
 ## 1. Preconditions
@@ -172,23 +173,42 @@ Known traps and how to handle them:
 - Never send a new prompt to a `working` agent — it lands mid-turn and
   corrupts the run. Wait for `idle`/`done`/`blocked`.
 
-## 7. Review each package
+## 7. Review each package — with a reviewer subagent
 
-When an agent settles, review its work yourself in the worktree — read
-`git log`/`git diff` against the package's acceptance criteria and the
-design references. You read; you never edit. Send findings back as a
-numbered review prompt and wait for the fix; review feedback that runs long
-goes into a temp file exactly like the brief. Loop until the diff is clean;
-budget 2 review rounds per package, then either accept with documented
-caveats or drop the package from the round and say why. A dropped package's
-worktree and branch stay in place for the user to inspect — its work exists
-nowhere else — but its agent gets shut down like any finished one (step 9).
-
-Verify with git, not with the agent's self-report: `git log <base-sha>..HEAD`
-in the worktree is the complete set of commits the package produced, and
-`git diff <base-sha>..HEAD` is the diff you review — taken from git, never
-from the agent's summary. Uncommitted leftovers (`git status`) mean the
+When an agent settles, first check the plumbing yourself; this is cheap
+metadata, not source. `git log <base-sha>..HEAD` in the worktree is the
+complete set of commits the package produced — taken from git, never from
+the agent's summary — and uncommitted leftovers in `git status` mean the
 brief wasn't followed even if the summary reads well.
+
+Then spawn a **reviewer subagent** to grade the diff — do not read it
+yourself. Package diffs pulled into the orchestrator window are exactly
+the source this architecture keeps out: by the fourth package your
+judgment is swimming in the first three's implementation noise, and having
+briefed the round you also want it to succeed — a reviewer that wrote none
+of it grades without that bias. The reviewer needs only three inputs: the
+brief file path, the worktree path, and the base sha. It reads
+`git diff <base-sha>..HEAD`, returns a per-criterion verdict with
+evidence, and flags anything outside the brief's scope. Reviews are
+read-only, so several can run in parallel while other agents are still
+working.
+
+Reviewer model: one tier below the session model by default — strong
+enough to genuinely parse the diff, cheap enough to run every round.
+Escalate to the session model for the packages you graded hardest: a
+reviewer much weaker than the code it grades rubber-stamps what it cannot
+parse. Never use the cheapest tier for code review.
+
+You adjudicate. With the verdicts in hand, decide accept, send back, or
+drop — that call needs round-level context (merge order, review budgets,
+how the packages interact) that only you hold. Send findings back to the
+implementing agent as a numbered review prompt and wait for the fix;
+feedback that runs long goes into a temp file exactly like the brief.
+Budget 2 review rounds per package, then either accept with documented
+caveats or drop the package from the round and say why. A dropped
+package's worktree and branch stay in place for the user to inspect — its
+work exists nowhere else — but its agent gets shut down like any finished
+one (step 9).
 
 ## 8. Validate serially
 
@@ -240,7 +260,7 @@ When the user says the PRs are merged:
 5. Final report: per package — branch, PR, review rounds used, validation
    evidence — plus anything left over.
 
-Red lines for the whole round: the orchestrator never edits source; never
-run two heavy builds concurrently; never merge a PR; never force-remove a
-worktree with unmerged work; never let an agent push; never leave a
-finished agent running.
+Red lines for the whole round: the orchestrator never edits source and
+never reads package diffs; never run two heavy builds concurrently; never
+merge a PR; never force-remove a worktree with unmerged work; never let an
+agent push; never leave a finished agent running.
