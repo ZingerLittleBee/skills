@@ -66,6 +66,15 @@ parallel:
 - Write down, per package: scope, acceptance criteria, the design or spec
   references the agent must read, and a difficulty grade.
 
+Give the round a short kebab-case **round-slug** and each package its own
+slug. The package slug names everything the package owns — branch
+`feat/<slug>`, worktree label, agent, brief file — so `herdr agent list`
+reads as a status board; the round-slug names the brief directory
+(step 5) and, in a feature round, the integration branch (step 9). Agent
+names are server-global and branches already live in the repo: check
+`herdr agent list` and `git branch --list "feat/*"` for collisions now,
+and pick a different slug rather than debug ambiguous targets mid-round.
+
 Present the plan — shape, packages, branch names, agent kind per package —
 as a short table and get one confirmation before creating anything (skip
 only if the user already said to run unattended).
@@ -105,25 +114,23 @@ sweeps, copy changes) go to the cheaper kinds. When unsure, assign up.
 herdr agent start <slug> --kind <kind> --pane <root-pane-id>
 ```
 
-Name each agent after its package slug so `herdr agent list` reads as a
-status board.
-
 ## 5. Brief each agent
 
 A real brief is too long to push through a terminal. Write it as a Markdown
-file in the OS temp directory — one per package, e.g.
-`$TMPDIR/herdr-fleet-<slug>.md` — and make the prompt a one-liner pointing
-at it:
+file, one per package, in the round's temp directory —
+`$TMPDIR/herdr-fleet-<round-slug>/<slug>.md`; the round-slug directory
+keeps two rounds on one machine out of each other's briefs — and make the
+prompt a one-liner pointing at it:
 
 ```bash
-herdr agent prompt <slug> "Read $TMPDIR/herdr-fleet-<slug>.md and complete the package it describes."
+herdr agent prompt <slug> "Read $TMPDIR/herdr-fleet-<round-slug>/<slug>.md and complete the package it describes."
 ```
 
 Long text sent through `agent prompt` risks wrapping and paste-mode
 mangling, and a file survives for re-briefing after a crash or a swallowed
 prompt. This is the **file-drop** rule, and it covers everything long you
 send an agent all round — briefs, review feedback, failing build output:
-write a temp file, send the path. Write the file with the same discipline
+write a file in the round directory, send the path. Write the file with the same discipline
 as a handoff document: self-contained, referencing specs and code by path
 instead of inlining them, and with secrets redacted — the agent's pane is
 visible to anyone at the screen.
@@ -354,8 +361,8 @@ When the user says the PRs are merged:
    `git fetch --prune`; if a merged branch is still on the remote (the
    repo doesn't auto-delete PR head branches), delete it with
    `git push origin --delete <branch>`.
-6. Delete the round's brief and feedback files from `$TMPDIR` — they name
-   repo internals and have served their purpose.
+6. Delete the round's brief directory `$TMPDIR/herdr-fleet-<round-slug>` —
+   it names repo internals and has served its purpose.
 7. Final report: per package — branch, PR, review rounds used, validation
    evidence — plus anything left over.
 
