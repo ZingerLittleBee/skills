@@ -321,7 +321,7 @@ plus the committed diff.
 
 Report all PR URLs to the user and stop.
 
-## 10. After the merge: clean up and re-verify
+## 10. After the merge: re-verify, then clean up
 
 When the user says the PRs are merged:
 
@@ -331,22 +331,28 @@ When the user says the PRs are merged:
    default branch" is **not** evidence of unmerged work once the PR
    reports MERGED.
 2. Pull the default branch in the main repo.
-3. Remove each worktree whose work is contained in a MERGED PR — in a
+3. Run the full validation suite once on merged main — the round's
+   validations ran against the base sha, and this is where drift from a
+   moved default branch shows up. This run gates the cleanup: on failure,
+   keep every worktree, branch, and pane in place as recovery context for
+   the fix, and bring the failing output to the user.
+4. Remove each worktree whose work is contained in a MERGED PR — in a
    feature round that is every package worktree plus the integration
    worktree, once the integration PR is MERGED:
    `herdr worktree remove --workspace <id> --force`. A worktree whose
    work is in no merged PR and whose commits exist nowhere else never
    gets force-removed; surface it instead.
-4. Delete the local package branches, and in a feature round the
+5. Delete the local package branches, and in a feature round the
    integration branch — worktrees first, branches second:
    git refuses to delete a branch that is still checked out in a
    worktree. After a squash merge `git branch -d` still counts the branch
    unmerged, so use `-D` once step 1 confirmed the PR. Then
-   `git fetch --prune` to confirm the remotes are gone.
-5. Run the full validation suite once on merged main — the round's
-   validations ran against the base sha, and this is where drift from a
-   moved default branch shows up.
-6. Final report: per package — branch, PR, review rounds used, validation
+   `git fetch --prune`; if a merged branch is still on the remote (the
+   repo doesn't auto-delete PR head branches), delete it with
+   `git push origin --delete <branch>`.
+6. Delete the round's brief and feedback files from `$TMPDIR` — they name
+   repo internals and have served their purpose.
+7. Final report: per package — branch, PR, review rounds used, validation
    evidence — plus anything left over.
 
 Round invariants: implementation — conflict resolution included — belongs
