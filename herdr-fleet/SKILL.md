@@ -121,8 +121,8 @@ prompt. This is the **file-drop** rule, and it covers everything long you
 send an agent all round — briefs, review feedback, failing build output:
 write a temp file, send the path. Write the file with the same discipline
 as a handoff document: self-contained, referencing specs and code by path
-instead of inlining them, and with secrets redacted — the agent's pane is visible to anyone at
-the screen.
+instead of inlining them, and with secrets redacted — the agent's pane is
+visible to anyone at the screen.
 
 The brief must carry:
 
@@ -242,8 +242,8 @@ You adjudicate. With the verdicts in hand, decide accept, send back, or
 drop — that call needs round-level context (merge order, review budgets,
 how the packages interact) that only you hold. Send findings back to the
 implementing agent as a numbered review prompt and wait for the fix; long
-feedback is a file-drop (step 5).
-Budget 2 review rounds per package, then either accept with documented
+feedback is a file-drop (step 5). Budget 2 review rounds per package, then
+either accept with documented
 caveats or drop the package from the round and say why (in a feature
 round, also state what the feature now lacks). A dropped package's
 worktree and branch stay in place for the user to inspect — its work
@@ -311,14 +311,15 @@ review and its quick checks:
 independent round, after the integration suite is green in a feature
 round. An agent left running after its package is done keeps a live
 session holding your repo context and credentials, keeps occupying a
-subscription seat, and will act on any stray input that reaches its pane. Ask it to quit with its own exit command
+subscription seat, and will act on any stray input that reaches its pane.
+Ask it to quit with its own exit command
 (`/exit`, `/quit`, or ctrl+c / ctrl+d via `herdr agent send-keys`), then
 confirm the name is gone from `herdr agent list` and the pane is back at a
 shell prompt. Keep the pane and the worktree — if PR feedback later needs
 fixes, start a fresh agent in the same pane and point it at the brief file
 plus the committed diff.
 
-Report all PR URLs to the user and stop — do not merge.
+Report all PR URLs to the user and stop.
 
 ## 10. After the merge: clean up and re-verify
 
