@@ -71,9 +71,10 @@ slug. The package slug names everything the package owns — branch
 `feat/<slug>`, worktree label, agent, brief file — so `herdr agent list`
 reads as a status board; the round-slug names the brief directory
 (step 5) and, in a feature round, the integration branch (step 9). Agent
-names are server-global and branches already live in the repo: check
-`herdr agent list` and `git branch --list "feat/*"` for collisions now,
-and pick a different slug rather than debug ambiguous targets mid-round.
+names are server-global and branches already live in the repo and on the
+remote: check `herdr agent list`, `git branch --list "feat/*"`, and
+`git ls-remote --heads origin "feat/*"` for collisions now, and pick a
+different slug rather than debug ambiguous targets mid-round.
 
 Present the plan — shape, packages, branch names, agent kind per package —
 as a short table and get one confirmation before creating anything (skip
@@ -117,9 +118,9 @@ herdr agent start <slug> --kind <kind> --pane <root-pane-id>
 ## 5. Brief each agent
 
 A real brief is too long to push through a terminal. Write it as a Markdown
-file, one per package, in the round's temp directory —
-`$TMPDIR/herdr-fleet-<round-slug>/<slug>.md`; the round-slug directory
-keeps two rounds on one machine out of each other's briefs — and make the
+file, one per package, in the round's temp directory
+`$TMPDIR/herdr-fleet-<round-slug>/<slug>.md` (the round-slug directory
+keeps two rounds on one machine out of each other's briefs), and make the
 prompt a one-liner pointing at it:
 
 ```bash
@@ -130,10 +131,10 @@ Long text sent through `agent prompt` risks wrapping and paste-mode
 mangling, and a file survives for re-briefing after a crash or a swallowed
 prompt. This is the **file-drop** rule, and it covers everything long you
 send an agent all round — briefs, review feedback, failing build output:
-write a file in the round directory, send the path. Write the file with the same discipline
-as a handoff document: self-contained, referencing specs and code by path
-instead of inlining them, and with secrets redacted — the agent's pane is
-visible to anyone at the screen.
+write a file in the round directory, send the path. Write the file with
+the same discipline as a handoff document: self-contained, referencing
+specs and code by path instead of inlining them, and with secrets
+redacted — the agent's pane is visible to anyone at the screen.
 
 The brief must carry:
 
@@ -213,8 +214,8 @@ Known traps and how to handle them:
   terminal's alternate screen never feed scrolled-off rows into herdr's
   scrollback, so raising `--lines` cannot recover a long finished reply.
   When a read comes back truncated, ask the agent to write its complete
-  report to a temp Markdown file and reply with only the path, then read
-  the file directly.
+  report to a Markdown file in the round directory and reply with only
+  the path, then read the file directly.
 - **A vanished agent is not a finished agent.** If a name disappears from
   `herdr agent list` and the pane is back at a shell, the agent exited or
   crashed. Check `git log` in the worktree for what actually landed, then
@@ -256,10 +257,9 @@ implementing agent as a numbered review prompt and wait for the fix; long
 feedback is a file-drop (step 5). Budget 2 review rounds per package, then
 either accept with documented caveats or drop the package from the round
 and say why (in a feature round, also state what the feature now lacks).
-A dropped package's
-worktree and branch stay in place for the user to inspect — its work
-exists nowhere else — but its agent gets shut down like any finished one
-(step 9).
+A dropped package's worktree and branch stay in place for the user to
+inspect — its work exists nowhere else — but its agent gets shut down
+like any finished one (step 9).
 
 ## 8. Validate serially
 
