@@ -21,9 +21,13 @@ babysitting packages A through M, and no two writers ever share a checkout.
   If not, say so and stop — do not drive herdr from outside herdr.
 - The main repo's working tree must be clean (`git status`); surface a dirty
   tree instead of working around it.
-- Run `herdr agent` once to see which agent kinds are installed. Ask the user
-  which subscriptions to use if they haven't said; a kind that isn't
-  installed cannot be assigned.
+- Check `herdr integration status`: every agent kind you plan to assign
+  needs its integration to read `current` — the watch loop's state
+  detection comes from that integration, so run
+  `herdr integration install <kind>` for any kind reading `not installed`
+  or `outdated`. (`herdr agent` lists the *supported* kinds only; whether
+  an agent binary is actually installed herdr cannot tell — ask the user
+  which subscriptions to use if they haven't said.)
 - `gh auth status` must succeed — the round ends by pushing branches and
   opening PRs through the gh CLI, and discovering broken auth only then
   wastes the whole round.
@@ -243,9 +247,9 @@ drop — that call needs round-level context (merge order, review budgets,
 how the packages interact) that only you hold. Send findings back to the
 implementing agent as a numbered review prompt and wait for the fix; long
 feedback is a file-drop (step 5). Budget 2 review rounds per package, then
-either accept with documented
-caveats or drop the package from the round and say why (in a feature
-round, also state what the feature now lacks). A dropped package's
+either accept with documented caveats or drop the package from the round
+and say why (in a feature round, also state what the feature now lacks).
+A dropped package's
 worktree and branch stay in place for the user to inspect — its work
 exists nowhere else — but its agent gets shut down like any finished one
 (step 9).
