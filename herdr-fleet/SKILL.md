@@ -147,14 +147,27 @@ loop. Do not end the turn to "wait for the agents", and do not drift into
 side work — an unwatched fleet stalls: a `blocked` agent burns wall-clock
 until someone answers it, and a crashed agent silently drops its package.
 
-Loop until every package has settled:
+Loop until every package has settled. Sleep-polling burns a tool call a
+minute to hear "no change"; block on the fleet instead — `herdr agent
+wait` returns the moment an agent reaches `idle`, `done`, or `blocked`,
+and costs nothing while it waits:
 
 ```bash
-sleep 60; herdr agent list
+for a in <unsettled slugs>; do herdr agent wait "$a" --timeout 540000 & done
+wait -n; kill $(jobs -p) 2>/dev/null
+herdr agent list
 ```
 
+Wake on the first event, sweep with `herdr agent list`, act, then block
+again on whatever is still unsettled. Two details keep the block safe:
+wait only on unsettled agents (a wait on an agent already `idle` returns
+instantly and turns the block into a busy-loop), and keep `--timeout`
+under your own tool's command limit, treating expiry as a periodic sweep —
+the sweep is what catches a vanished agent, which no state wait will ever
+report.
+
 Keep a per-package status board — agent state, last state change, review
-rounds used, next action — and update it on every poll. When an agent
+rounds used, next action — and update it on every wake. When an agent
 changes state, read its recent output before deciding anything:
 
 ```bash
@@ -163,10 +176,10 @@ herdr agent read <name> --source recent-unwrapped --lines 120
 
 Priorities inside the loop: answer `blocked` agents first (each is stalled
 wall-clock), then review settled ones (step 7), then check long-`working`
-ones — an agent whose output hasn't changed across several polls may be
+ones — an agent whose output hasn't changed across several sweeps may be
 stuck on an unrecognized prompt or spinning; read the pane and decide.
 Surface progress to the user at transitions that matter (package settled,
-review sent, validation passed, PR opened), not on every poll.
+review sent, validation passed, PR opened), not on every wake.
 
 Known traps and how to handle them:
 
