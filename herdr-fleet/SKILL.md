@@ -1,12 +1,12 @@
 ---
 name: herdr-fleet
-description: "Run one round of parallel implementation across multiple CLI coding agents (claude, codex, droid, grok, …) in herdr-managed git worktrees, one package per worktree ending in one PR each. Invoke with /herdr-fleet <tasks or backlog description>."
+description: "Run one round of parallel implementation across multiple CLI coding agents (claude, codex, droid, grok, …) in herdr-managed git worktrees, one package per worktree, delivered as one PR per package or a single integration PR. Invoke with /herdr-fleet <tasks or backlog description>."
 disable-model-invocation: true
 ---
 
 # herdr-fleet
 
-Complete several independent work packages in parallel by giving each one a
+Complete several work packages in parallel by giving each one a
 git worktree and a dedicated CLI coding agent inside herdr. You are the
 **orchestrator**: you slice the work, brief the agents, watch their state,
 dispatch reviewers, and run validation. You never implement, and you never
@@ -40,20 +40,31 @@ or `done`; an `unknown` agent must be read before it counts as anything.
 
 ## 2. Package the work
 
-Group the requested tasks into packages that can genuinely run in parallel:
+First decide the round's **shape** — it fixes how the round is validated
+(step 8) and delivered (step 9):
 
-- One package = one branch = one PR = one agent. Keep each package small
-  enough that a single agent finishes it in one sitting.
+- **Independent round** — the packages are separate deliverables, each of
+  which stands on its own in the default branch. Each ends in its own PR.
+- **Feature round** — the packages are facets of one feature and only make
+  sense together: a package alone may not even build, and the feature can
+  only be tested whole. The packages merge into one integration branch,
+  validated and PR'd as a unit.
+
+Then group the requested tasks into packages that can genuinely run in
+parallel:
+
+- One package = one branch = one agent. Keep each package small enough
+  that a single agent finishes it in one sitting.
 - Minimize file overlap between packages. Where two packages must touch the
-  same file, note it as a merge risk up front and decide their PR merge
-  order now — a shared *base* commit merges cleanly, but two packages
-  editing the same lines will not.
+  same file, note it as a merge risk up front and decide their merge order
+  now — a shared *base* commit merges cleanly, but two packages editing
+  the same lines will not.
 - Write down, per package: scope, acceptance criteria, the design or spec
   references the agent must read, and a difficulty grade.
 
-Present the plan — packages, branch names, agent kind per package — as a
-short table and get one confirmation before creating anything (skip only if
-the user already said to run unattended).
+Present the plan — shape, packages, branch names, agent kind per package —
+as a short table and get one confirmation before creating anything (skip
+only if the user already said to run unattended).
 
 ## 3. One worktree per package
 
@@ -109,9 +120,8 @@ mangling, and a file survives for re-briefing after a crash or a swallowed
 prompt. This is the **file-drop** rule, and it covers everything long you
 send an agent all round — briefs, review feedback, failing build output:
 write a temp file, send the path. Write the file with the same discipline
-as a handoff document:
-self-contained, referencing specs and code by path instead of inlining
-them, and with secrets redacted — the agent's pane is visible to anyone at
+as a handoff document: self-contained, referencing specs and code by path
+instead of inlining them, and with secrets redacted — the agent's pane is visible to anyone at
 the screen.
 
 The brief must carry:
@@ -213,38 +223,74 @@ how the packages interact) that only you hold. Send findings back to the
 implementing agent as a numbered review prompt and wait for the fix; long
 feedback is a file-drop (step 5).
 Budget 2 review rounds per package, then either accept with documented
-caveats or drop the package from the round and say why. A dropped
-package's worktree and branch stay in place for the user to inspect — its
-work exists nowhere else — but its agent gets shut down like any finished
-one (step 9).
+caveats or drop the package from the round and say why (in a feature
+round, also state what the feature now lacks). A dropped package's
+worktree and branch stay in place for the user to inspect — its work
+exists nowhere else — but its agent gets shut down like any finished one
+(step 9).
 
 ## 8. Validate serially
 
-Only after a package passes review, run the repo's real build and test
-commands **in that worktree, one worktree at a time** — never two at once.
-On failure, send the owning agent the verbatim failing output (not your
-paraphrase) and re-validate after the fix; long output is a file-drop
+Only after a package passes review, validate it **in its worktree, one
+worktree at a time** — exactly one heavy build runs at any moment. What to
+run follows the round's shape: in an independent round each package gets
+the repo's full build and test commands, because its branch must stand
+alone; in a feature round run only the package's own quick checks (it
+compiles, its own tests pass) — the full suite runs once on the
+integration branch (step 9), where cross-package failures actually show
+up. On failure, send the owning agent the verbatim failing output (not
+your paraphrase) and re-validate after the fix; long output is a file-drop
 (step 5).
 
-## 9. One PR per package
+## 9. Deliver the round
 
-Invoking this skill is the authorization to push the package branches and
-open their PRs; merging stays with the user. For each validated package:
+Invoking this skill is the authorization to push branches and open PRs;
+merging a PR stays with the user. PR titles and bodies in English,
+Conventional-Commit style titles, no watermarks. The round's shape decides
+the delivery:
+
+**Independent round — one PR per package.** For each validated package:
 
 ```bash
 git -C <worktree> push -u origin feat/<slug>
 gh pr create --head feat/<slug> --title "<conventional title>" --body "<summary + test evidence>"
 ```
 
-PR titles and bodies in English, Conventional-Commit style titles, no
-watermarks. If two packages touch the same files, state the agreed merge
-order in both PR bodies and in your report — the later PR gets rebased once
-the earlier one lands, rather than trusting the three-way merge.
+If two packages touch the same files, state the agreed merge order in both
+PR bodies and in your report — the later PR gets rebased once the earlier
+one lands, rather than trusting the three-way merge.
 
-**Then shut the finished agent down promptly.** An agent left running after
-its package is done keeps a live session holding your repo context and
-credentials, keeps occupying a subscription seat, and will act on any stray
-input that reaches its pane. Ask it to quit with its own exit command
+**Feature round — one integration PR.** Once every package has passed
+review and its quick checks:
+
+1. Create one more worktree for the integration branch, pinned to the
+   round's base sha:
+
+   ```bash
+   herdr worktree create --cwd "$PWD" --branch feat/<round-slug> --base <sha> --label integration --no-focus
+   ```
+
+2. Merge the package branches into it in the agreed order, one at a time:
+   `git -C <integration-worktree> merge --no-ff feat/<slug>`. A clean
+   merge is bookkeeping and yours to run; a conflicted merge is
+   implementation and belongs to the agent owning the incoming package —
+   brief it (file-drop) to resolve the conflict in the integration
+   worktree and commit the merge. Start the next merge only after the
+   previous one is committed.
+3. Run the repo's full build and test suite in the integration worktree —
+   the round's heavy build, and the first time the packages meet, so
+   cross-package failures land here. Send each failure verbatim to the
+   agent whose package owns it and have it fix on the integration branch,
+   one agent in that worktree at a time; re-run until green.
+4. Push the integration branch and open one PR whose body lists the
+   packages, their summaries, and the integration test evidence. Package
+   branches stay local — they are working state, not deliverables.
+
+**Then shut each finished agent down promptly** — after its PR opens in an
+independent round, after the integration suite is green in a feature
+round. An agent left running after its package is done keeps a live
+session holding your repo context and credentials, keeps occupying a
+subscription seat, and will act on any stray input that reaches its pane. Ask it to quit with its own exit command
 (`/exit`, `/quit`, or ctrl+c / ctrl+d via `herdr agent send-keys`), then
 confirm the name is gone from `herdr agent list` and the pane is back at a
 shell prompt. Keep the pane and the worktree — if PR feedback later needs
@@ -263,21 +309,26 @@ When the user says the PRs are merged:
    default branch" is **not** evidence of unmerged work once the PR
    reports MERGED.
 2. Pull the default branch in the main repo.
-3. Remove each worktree whose PR is MERGED:
-   `herdr worktree remove --workspace <id> --force`. A worktree whose PR
-   is not merged and whose commits exist nowhere else never gets
-   force-removed; surface it instead.
-4. Delete the local package branches — worktrees first, branches second:
+3. Remove each worktree whose work is contained in a MERGED PR — in a
+   feature round that is every package worktree plus the integration
+   worktree, once the integration PR is MERGED:
+   `herdr worktree remove --workspace <id> --force`. A worktree whose
+   work is in no merged PR and whose commits exist nowhere else never
+   gets force-removed; surface it instead.
+4. Delete the local package branches, and in a feature round the
+   integration branch — worktrees first, branches second:
    git refuses to delete a branch that is still checked out in a
    worktree. After a squash merge `git branch -d` still counts the branch
    unmerged, so use `-D` once step 1 confirmed the PR. Then
    `git fetch --prune` to confirm the remotes are gone.
-5. Run the full validation suite once on merged main — per-package runs
-   don't cover cross-package interaction; this is where it shows up.
+5. Run the full validation suite once on merged main — the round's
+   validations ran against the base sha, and this is where drift from a
+   moved default branch shows up.
 6. Final report: per package — branch, PR, review rounds used, validation
    evidence — plus anything left over.
 
-Round invariants: implementation belongs to the agents and diff-grading to
-the reviewers; exactly one heavy build runs at a time; the orchestrator
-pushes and the user merges; a worktree holding unmerged work stays in
-place; a finished agent gets shut down.
+Round invariants: implementation — conflict resolution included — belongs
+to the agents and diff-grading to the reviewers; exactly one heavy build
+runs at a time; the orchestrator pushes and the user merges the PRs; a
+worktree holding unmerged work stays in place; a finished agent gets shut
+down.
