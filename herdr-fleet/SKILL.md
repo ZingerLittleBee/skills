@@ -1,6 +1,6 @@
 ---
 name: herdr-fleet
-description: "Run one round of parallel implementation across multiple CLI coding agents (claude, codex, droid, grok, …) in herdr-managed git worktrees. The main session is a pure orchestrator: it packages the backlog, creates one worktree per package, assigns each package to an agent kind by difficulty, watches progress, grades diffs with reviewer subagents, validates serially, opens one PR per package, and removes worktrees after merge. Invoke with /herdr-fleet <tasks or backlog description>."
+description: "Run one round of parallel implementation across multiple CLI coding agents (claude, codex, droid, grok, …) in herdr-managed git worktrees, one package per worktree ending in one PR each. Invoke with /herdr-fleet <tasks or backlog description>."
 disable-model-invocation: true
 ---
 
@@ -35,7 +35,8 @@ JSON — read every workspace/tab/pane id from the response
 (`.result.workspace`, `.result.root_pane.pane_id`, …), never guess them.
 Agent states: `working` (leave it alone), `blocked` (it needs input),
 `idle`/`done` (turn finished), `unknown` (present but unclassified — not
-proof of completion).
+proof of completion). A package is **settled** when its agent reads `idle`
+or `done`; an `unknown` agent must be read before it counts as anything.
 
 ## 2. Package the work
 
@@ -105,7 +106,10 @@ herdr agent prompt <slug> "Read $TMPDIR/herdr-fleet-<slug>.md and complete the p
 
 Long text sent through `agent prompt` risks wrapping and paste-mode
 mangling, and a file survives for re-briefing after a crash or a swallowed
-prompt. Write the file with the same discipline as a handoff document:
+prompt. This is the **file-drop** rule, and it covers everything long you
+send an agent all round — briefs, review feedback, failing build output:
+write a temp file, send the path. Write the file with the same discipline
+as a handoff document:
 self-contained, referencing specs and code by path instead of inlining
 them, and with secrets redacted — the agent's pane is visible to anyone at
 the screen.
@@ -206,8 +210,8 @@ parse. Never use the cheapest tier for code review.
 You adjudicate. With the verdicts in hand, decide accept, send back, or
 drop — that call needs round-level context (merge order, review budgets,
 how the packages interact) that only you hold. Send findings back to the
-implementing agent as a numbered review prompt and wait for the fix;
-feedback that runs long goes into a temp file exactly like the brief.
+implementing agent as a numbered review prompt and wait for the fix; long
+feedback is a file-drop (step 5).
 Budget 2 review rounds per package, then either accept with documented
 caveats or drop the package from the round and say why. A dropped
 package's worktree and branch stay in place for the user to inspect — its
@@ -219,8 +223,8 @@ one (step 9).
 Only after a package passes review, run the repo's real build and test
 commands **in that worktree, one worktree at a time** — never two at once.
 On failure, send the owning agent the verbatim failing output (not your
-paraphrase) and re-validate after the fix; failing output that runs long
-goes into a temp file like everything else you send an agent.
+paraphrase) and re-validate after the fix; long output is a file-drop
+(step 5).
 
 ## 9. One PR per package
 
@@ -273,7 +277,7 @@ When the user says the PRs are merged:
 6. Final report: per package — branch, PR, review rounds used, validation
    evidence — plus anything left over.
 
-Red lines for the whole round: the orchestrator never edits source and
-never reads package diffs; never run two heavy builds concurrently; never
-merge a PR; never force-remove a worktree with unmerged work; never let an
-agent push; never leave a finished agent running.
+Round invariants: implementation belongs to the agents and diff-grading to
+the reviewers; exactly one heavy build runs at a time; the orchestrator
+pushes and the user merges; a worktree holding unmerged work stays in
+place; a finished agent gets shut down.
