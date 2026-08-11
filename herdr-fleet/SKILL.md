@@ -153,18 +153,26 @@ wait` returns the moment an agent reaches `idle`, `done`, or `blocked`,
 and costs nothing while it waits:
 
 ```bash
+bash -c '
 for a in <unsettled slugs>; do herdr agent wait "$a" --timeout 540000 & done
-wait -n; kill $(jobs -p) 2>/dev/null
+wait -n; kill $(jobs -p) 2>/dev/null'
 herdr agent list
 ```
 
 Wake on the first event, sweep with `herdr agent list`, act, then block
-again on whatever is still unsettled. Two details keep the block safe:
-wait only on unsettled agents (a wait on an agent already `idle` returns
-instantly and turns the block into a busy-loop), and keep `--timeout`
-under your own tool's command limit, treating expiry as a periodic sweep —
-the sweep is what catches a vanished agent, which no state wait will ever
-report.
+again on whatever is still unsettled. Details that keep the block safe,
+verified against a live fleet:
+
+- Run the block under `bash -c` verbatim: `wait -n` is a bash-ism, and in
+  a zsh or fish default shell the block errors out and leaks the
+  background waits.
+- Wait only on unsettled agents — a wait on an agent already `idle`
+  returns in milliseconds and turns the block into a busy-loop.
+- A wait on a name that no longer exists fails fast with
+  `agent_not_found`, so an already-crashed agent wakes the loop by
+  itself. An agent vanishing mid-wait is unverified, so keep `--timeout`
+  under your own tool's command limit and treat expiry as a periodic
+  sweep that catches whatever the waits miss.
 
 Keep a per-package status board — agent state, last state change, review
 rounds used, next action — and update it on every wake. When an agent
