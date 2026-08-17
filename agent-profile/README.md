@@ -1,17 +1,22 @@
 # agent-profile
 
-**Not a skill.** This directory is the single source of truth for the shared user-level agent profile (`AGENTS.md`), the global instructions for all AI coding CLI tools (Claude Code, Codex, OpenCode, Droid).
+**Not a skill.** This directory is the single source of truth for the shared user-level agent profile (`AGENTS.md`), the global instructions for all AI coding CLI tools (Claude Code, Codex, OpenCode, Droid, Grok, Cursor).
 
-Everything outside this repo is a symlink. Edit `AGENTS.md` here, commit here; every tool picks up the change on its next session.
+Everything outside this repo is a symlink, except Cursor (see below). Edit `AGENTS.md` here, commit here; symlink tools pick up the change on their next session. After editing, re-run `./setup-agent-profile.sh` so the Cursor rule is regenerated.
 
-## Symlink layout
+## Layout
 
 ```
 ~/.claude/CLAUDE.md             ─┐
-~/.codex/AGENTS.md               ├─> <repo>/agent-profile/AGENTS.md
-~/.config/opencode/AGENTS.md     │
-~/.factory/AGENTS.md            ─┘
+~/.codex/AGENTS.md               │
+~/.config/opencode/AGENTS.md     ├─> <repo>/agent-profile/AGENTS.md
+~/.factory/AGENTS.md             │
+~/.grok/AGENTS.md               ─┘
+
+~/.cursor/rules/agent-profile.mdc   generated always-apply .mdc (not a symlink)
 ```
+
+Cursor is not a symlink because Cursor CLI and the editor do **not** read `~/.cursor/AGENTS.md`. Their user-level file rules live in `~/.cursor/rules/*.mdc` and need `alwaysApply: true` frontmatter, which the shared `AGENTS.md` must not carry.
 
 ## Setup
 
@@ -21,7 +26,7 @@ Clone this repo anywhere, then run:
 ./setup-agent-profile.sh
 ```
 
-Idempotent; re-run it whenever a tool update replaces a symlink with a regular file (existing regular files are backed up, never overwritten). If the repo moves, re-run it from the new location.
+Idempotent; re-run it whenever a tool update replaces a symlink with a regular file (existing regular files are backed up, never overwritten), after you edit `AGENTS.md` (Cursor copy), or if the repo moves.
 
 ## Rules of the road
 
