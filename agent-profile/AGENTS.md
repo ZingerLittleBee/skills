@@ -87,3 +87,4 @@
 
 - Prefer `ctx7` over web search for current, unfamiliar, or version-specific library documentation; otherwise answer directly.
 - Run `npx ctx7@latest library <name> "<question>"` (append `/version` when needed), then `npx ctx7@latest docs <libraryId> "<question>"`. Use at most three commands and never include secrets.
+- If Context7 quota is exhausted, use the Mintlify index `context` tool instead.
