@@ -157,10 +157,11 @@ The brief must carry:
 
 ## 6. Watch the round — this is your job now
 
-Between briefing and the final merge, the orchestrator's whole job is the
-watch loop. Do not end the turn to "wait for the agents", and do not drift into
-side work — an unwatched fleet stalls: a `blocked` agent burns wall-clock
-until someone answers it, and a crashed agent silently drops its package.
+Between briefing and the final merge, the orchestrator's whole job is
+the watch loop. Do not end the turn to "wait for the agents", and do
+not drift into side work — an unwatched fleet stalls: a `blocked` agent
+burns wall-clock until someone answers it, and a crashed agent silently
+drops its package.
 
 Loop until every package has settled. Sleep-polling burns a tool call a
 minute to hear "no change"; block on the fleet instead — `herdr agent
@@ -257,12 +258,12 @@ You adjudicate. With the verdicts in hand, decide accept, send back, or
 drop — that call needs round-level context (merge order, review budgets,
 how the packages interact) that only you hold. Send findings back to the
 implementing agent as a numbered review prompt and wait for the fix; long
-feedback is a file-drop (step 5). Budget 2 review rounds per package, then
-either accept with documented caveats or drop the package from the round
-and say why, stating what the round now lacks.
-A dropped package's worktree and branch stay in place for the user to
-inspect — its work exists nowhere else — but its agent gets shut down
-like any finished one (step 9).
+feedback is a file-drop (step 5). Budget 2 review rounds per package,
+then either accept with documented caveats or drop the package from the
+round and say why, stating what the round now lacks. A dropped
+package's worktree and branch stay in place for the user to inspect —
+its work exists nowhere else — but its agent gets shut down like any
+finished one (step 9).
 
 ## 8. Validate serially
 
@@ -280,9 +281,13 @@ The round ends on a local branch — nothing gets pushed; publishing (push,
 PR, merging into the default branch) stays with the user. Once every
 package has passed review and its quick checks:
 
-1. Check out the merge target in the main repo. If step 2 chose a fresh
-   target, create it now: `git switch -c feat/<round-slug> <base-sha>`;
-   otherwise stay on the current branch.
+1. Re-check that the main repo's working tree is still clean
+   (`git status`) — hours may have passed since the step-1 check, and
+   uncommitted edits would ride into the switch or block the merges;
+   surface a dirty tree instead of working around it. Then check out
+   the merge target: if step 2 chose a fresh target, create it now with
+   `git switch -c feat/<round-slug> <base-sha>`; otherwise stay on the
+   current branch.
 2. Merge the package branches into it in the agreed order, one at a time:
    `git merge --no-ff feat/<slug>`. A clean merge is bookkeeping and
    yours to run; a conflicted merge is implementation and belongs to the
