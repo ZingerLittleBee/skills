@@ -69,11 +69,15 @@ slug rather than debug ambiguous targets mid-round.
 Now fix the round's **base** and **merge target** from the main repo's
 current branch:
 
-- Record the current branch and its head sha (`git rev-parse
-  --abbrev-ref HEAD`, `git rev-parse HEAD`). That sha is the round's
-  base — every worktree gets pinned to it (step 3).
+- Record the main repo's absolute path (`git rev-parse
+  --show-toplevel`), the current branch (`git rev-parse --abbrev-ref
+  HEAD`), and its head sha (`git rev-parse HEAD`). The sha is the
+  round's base — every worktree gets pinned to it (step 3) — and the
+  path is what worktree creation (step 3) and conflict briefs (step 9)
+  reference; your shell's cwd hours from now is not a substitute.
 - If the current branch is shared and long-lived (the default branch,
-  `develop`, `release/*`), the round must not land on it directly: the
+  `develop`, `release/*`), or HEAD is detached (`--abbrev-ref` prints
+  the literal `HEAD`), the round must not land on it directly: the
   merge target is a new local branch `feat/<round-slug>` created from
   the base sha at merge time (step 9). Otherwise the current branch
   itself is the merge target. Borderline cases are your judgment call.
@@ -86,16 +90,17 @@ unattended).
 ## 3. One worktree per package
 
 ```bash
-herdr worktree create --cwd "$PWD" --branch feat/<slug> --base <sha> --label <slug> --no-focus
+herdr worktree create --cwd <main-repo-path> --branch feat/<slug> --base <sha> --label <slug> --no-focus
 ```
 
 Pin every package to the same `--base` commit (the round's base sha from
 step 2): it keeps packages from drifting apart if the branch moves
-mid-round, and it is the **baseline** every later verification diffs
-against.
+mid-round, and every later verification diffs against it.
 
-Read the workspace id and root pane id from the JSON. Then make the worktree
-actually buildable before starting an agent in it:
+Record the workspace id, root pane id, and worktree path from the
+JSON — the reviewers (step 7) and validation (step 8) both need the
+path. Then make the worktree actually buildable before starting an
+agent in it:
 
 - **Binary artifacts don't follow.** Git worktrees share history, not
   ignored build artifacts. If the build depends on a large local artifact
@@ -105,6 +110,8 @@ actually buildable before starting an agent in it:
 - Run the project's dependency resolution step in the worktree once
   (e.g. `swift package resolve`, `pnpm install`); retry on transient
   network failures rather than concluding the worktree is broken.
+  Resolution contends for the same shared caches as builds, so prepare
+  worktrees one at a time.
 
 ## 4. Assign agents by difficulty
 
@@ -120,10 +127,12 @@ herdr agent start <slug> --kind <kind> --pane <root-pane-id>
 
 ## 5. Brief each agent
 
-A real brief is too long to push through a terminal. Write it as a Markdown
-file, one per package, in the round's temp directory
-`$TMPDIR/herdr-fleet-<round-slug>/<slug>.md` (the round-slug directory
-keeps two rounds on one machine out of each other's briefs), and make the
+A real brief is too long to push through a terminal. Write it as a
+Markdown file, one per package, in the round's temp directory: resolve
+`$TMPDIR/herdr-fleet-<round-slug>` to an absolute path once, `mkdir -p`
+it, and reuse the resolved path all round, prompts included (the
+round-slug directory keeps two rounds on one machine out of each
+other's briefs; one brief per package at `<dir>/<slug>.md`). Make the
 prompt a one-liner pointing at it:
 
 ```bash
@@ -163,7 +172,10 @@ not drift into side work — an unwatched fleet stalls: a `blocked` agent
 burns wall-clock until someone answers it, and a crashed agent silently
 drops its package.
 
-Loop until every package has settled. Sleep-polling burns a tool call a
+Loop until every package has **concluded** — passed review (step 7) and
+its quick checks (step 8), or been dropped. Settled is not concluded:
+review findings and failing output send an agent back to `working`, and
+its package re-enters the loop. Sleep-polling burns a tool call a
 minute to hear "no change"; block on the fleet instead — `herdr agent
 wait` returns the moment an agent reaches `idle`, `done`, or `blocked`,
 and costs nothing while it waits:
@@ -179,16 +191,22 @@ Wake on the first event, sweep with `herdr agent list`, act, then block
 again on whatever is still unsettled. Details that keep the block safe,
 verified against a live fleet:
 
-- Run the block under `bash -c` verbatim: `wait -n` is a bash-ism, and in
-  a zsh or fish default shell the block errors out and leaks the
-  background waits.
-- Wait only on unsettled agents — a wait on an agent already `idle`
-  returns in milliseconds and turns the block into a busy-loop.
-- A wait on a name that no longer exists fails fast with
-  `agent_not_found`, so an already-crashed agent wakes the loop by
-  itself. An agent vanishing mid-wait is unverified, so keep `--timeout`
-  under your own tool's command limit and treat expiry as a periodic
-  sweep that catches whatever the waits miss.
+- Run the block under a bash ≥ 4.3: `wait -n` is a bash-ism that
+  macOS's stock bash 3.2 predates, and zsh or fish error out and leak
+  the background waits. Check once with
+  `bash -c 'echo ${BASH_VERSINFO[0]}'`; without a modern bash, wait on
+  one agent at a time and lean on the timeout sweep.
+- Wait only on agents that are unsettled *and still listed* — a wait on
+  an agent already `idle` returns in milliseconds, and a wait on a name
+  that no longer exists fails just as fast with `agent_not_found`;
+  either turns the block into a busy-loop. The first `agent_not_found`
+  usefully wakes the loop to report a crash, but handle the vanished
+  agent (see the traps below) before blocking again.
+- Keep `--timeout` under this call's own command limit — raise the
+  call's limit rather than shrink the wait — and treat expiry as a
+  periodic sweep that catches whatever the waits miss: an agent
+  vanishing mid-wait, or one stuck in `unknown`, which `herdr agent
+  wait` never fires on.
 
 Keep a per-package status board — agent state, last state change, review
 rounds used, next action — and update it on every wake. When an agent
@@ -234,7 +252,9 @@ When an agent settles, first check the plumbing yourself; this is cheap
 metadata, not source. `git log <base-sha>..HEAD` in the worktree is the
 complete set of commits the package produced — taken from git, never from
 the agent's summary — and uncommitted leftovers in `git status` mean the
-brief wasn't followed even if the summary reads well.
+brief wasn't followed even if the summary reads well. An empty range
+means the package produced nothing: re-brief or drop it — an empty
+branch has nothing to merge and never reaches step 9.
 
 Then spawn a **reviewer subagent** to grade the diff — do not read it
 yourself. Package diffs pulled into the orchestrator window are exactly
@@ -244,8 +264,10 @@ briefed the round you also want it to succeed — a reviewer that wrote none
 of it grades without that bias. The reviewer needs only three inputs: the
 brief file path, the worktree path, and the base sha. It reads
 `git diff <base-sha>..HEAD`, returns a per-criterion verdict with
-evidence, and flags anything outside the brief's scope. Reviews are
-read-only, so several can run in parallel while other agents are still
+evidence, and flags anything outside the brief's scope. State in the
+reviewer's brief that it is read-only — a reviewer that "fixes" what it
+grades smuggles unreviewed edits into the merge. Read-only is also what
+lets several reviews run in parallel while other agents are still
 working.
 
 Reviewer model: one tier below the session model by default — strong
@@ -262,8 +284,9 @@ feedback is a file-drop (step 5). Budget 2 review rounds per package,
 then either accept with documented caveats or drop the package from the
 round and say why, stating what the round now lacks. A dropped
 package's worktree and branch stay in place for the user to inspect —
-its work exists nowhere else — but its agent gets shut down like any
-finished one (step 9).
+its work exists nowhere else — but its agent gets shut down at the
+moment of the drop (the drill in step 9), not held for that step's
+green-suite gate.
 
 ## 8. Validate serially
 
@@ -281,24 +304,35 @@ The round ends on a local branch — nothing gets pushed; publishing (push,
 PR, merging into the default branch) stays with the user. Once every
 package has passed review and its quick checks:
 
-1. Re-check that the main repo's working tree is still clean
-   (`git status`) — hours may have passed since the step-1 check, and
-   uncommitted edits would ride into the switch or block the merges;
-   surface a dirty tree instead of working around it. Then check out
-   the merge target: if step 2 chose a fresh target, create it now with
-   `git switch -c feat/<round-slug> <base-sha>`; otherwise stay on the
-   current branch.
+1. Re-check the main repo: the tree still clean (`git status`) and HEAD
+   still on the branch recorded in step 2 (`git rev-parse --abbrev-ref
+   HEAD`) — hours may have passed, and uncommitted edits or a mid-round
+   branch switch would ride into the merges; surface a mismatch instead
+   of working around it. (A recorded branch that merely moved past the
+   base sha still merges — report it.) Then check out the merge target:
+   if step 2 chose a fresh target, create it now with
+   `git switch -c feat/<round-slug> <base-sha>` — an "already exists"
+   refusal means the step-2 collision check was dodged, so stop and
+   surface it. Otherwise stay on the recorded branch.
 2. Merge the package branches into it in the agreed order, one at a time:
    `git merge --no-ff feat/<slug>`. A clean merge is bookkeeping and
    yours to run; a conflicted merge is implementation and belongs to the
    agent owning the incoming package — brief it (file-drop) to resolve
-   the conflict in the main repo checkout and commit the merge. Start
-   the next merge only after the previous one is committed.
-3. Run the repo's full build and test suite on the merged target — the
+   and commit the merge, and put the main repo's absolute path (step 2)
+   in the brief: the conflict lives in that checkout's index
+   (`MERGE_HEAD`), not in the agent's own worktree, and an agent left
+   pointed at its worktree will report a clean tree or "resolve" the
+   wrong repo. Start the next merge only after the previous one is
+   committed.
+3. Run the repo's full build and test suite on the merge target — the
    round's heavy build, and the first time the packages meet, so
    cross-package failures land here. Send each failure verbatim to the
-   agent whose package owns it and have it fix on the merge target, one
-   agent in that checkout at a time; re-run until green.
+   agent whose package owns it and have it fix on the merge target;
+   re-run until green.
+
+Throughout, the main checkout changes hands whole: exactly one agent
+works in it at a time, and while one does, run no git there yourself —
+the no-shared-checkout rule from the intro, applied to you.
 
 **Then shut each finished agent down promptly** — once the merged suite
 is green. An agent left running after its package is done keeps a live
@@ -321,13 +355,16 @@ fix, and bring the failing output to the user. Once green:
    worktree — its commits exist nowhere else — never gets
    force-removed; surface it instead.
 2. Delete the merged package branches — worktrees first, branches
-   second: git refuses to delete a branch that is still checked out in a
-   worktree. The `--no-ff` merges keep every package commit reachable
-   from the target, so `git branch -d` succeeds; treat a `-d` refusal as
-   evidence the package never actually merged, not as a cue to reach
-   for `-D`.
-3. Delete the round's brief directory `$TMPDIR/herdr-fleet-<round-slug>` —
-   it names repo internals and has served its purpose.
+   second: git refuses to delete a branch that is still checked out in
+   a worktree. Every merged tip is reachable from the target, so
+   `git branch -d` succeeds; read a refusal precisely — `used by
+   worktree` means step 1 left the worktree behind and says nothing
+   about merge state, while `not fully merged` is evidence the package
+   never actually merged. Either way investigate; `-D` answers neither.
+3. Delete the round's brief directory:
+   `rm -rf "${TMPDIR:?}/herdr-fleet-<round-slug>"` — the `:?` guard
+   keeps an unset `TMPDIR` from aiming the delete at `/`. It names repo
+   internals and has served its purpose.
 4. Final report: the merge target branch, then per package — branch,
    review rounds used, validation evidence — plus anything dropped or
    left over. What happens to the target branch next is the user's call.
