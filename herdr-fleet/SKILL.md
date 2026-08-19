@@ -9,12 +9,12 @@ disable-model-invocation: true
 Complete several work packages in parallel by giving each one a
 git worktree and a dedicated CLI coding agent inside herdr. You are the
 **orchestrator**: you slice the work, brief the agents, watch their state,
-dispatch reviewers, and run validation. You never implement, and you never
-pull package diffs into your own window — source lives in the agents'
-worktrees and gets graded by dedicated reviewer agents in their own
-panes (step 7). That split is
-what makes the round safe: your judgment on package N stays sharp after
-babysitting packages A through M, and no two writers ever share a checkout.
+dispatch reviewers, and run validation. You never implement, and you
+never pull package diffs into your own window — source lives in the
+agents' worktrees and gets graded by dedicated reviewer agents in
+their own panes (step 7). That split is what makes the round safe:
+your judgment on package N stays sharp after babysitting packages A
+through M, and no two writers ever share a checkout.
 
 ## 1. Preconditions
 
@@ -23,13 +23,13 @@ babysitting packages A through M, and no two writers ever share a checkout.
 - The main repo's working tree must be clean (`git status`); surface a dirty
   tree instead of working around it.
 - Check `herdr integration status`: every agent kind you plan to
-  assign — reviewer kinds included — needs its integration to read
-  `current` — the watch loop's state
-  detection comes from that integration, so run
-  `herdr integration install <kind>` for any kind reading `not installed`
-  or `outdated`. (`herdr agent` lists the *supported* kinds only; whether
-  an agent binary is actually installed herdr cannot tell — ask the user
-  which subscriptions to use if they haven't said.)
+  assign (reviewer kinds included) needs its integration to read
+  `current` — the watch loop's state detection comes from that
+  integration, so run `herdr integration install <kind>` for any kind
+  reading `not installed` or `outdated`. (`herdr agent` lists the
+  *supported* kinds only; whether an agent binary is actually installed
+  herdr cannot tell — ask the user which subscriptions to use if they
+  haven't said.)
 - This is a long, hands-off run. If the session isn't in an auto-accepting
   permission mode, warn that every approval prompt stalls the round.
 
@@ -185,7 +185,7 @@ and costs nothing while it waits:
 
 ```bash
 bash -c '
-for a in <unsettled slugs>; do herdr agent wait "$a" --timeout 540000 & done
+for a in <unsettled agent names>; do herdr agent wait "$a" --timeout 540000 & done
 wait -n; kill $(jobs -p) 2>/dev/null'
 herdr agent list
 ```
@@ -253,8 +253,8 @@ Known traps and how to handle them:
 
 ## 7. Review each package — with a dedicated reviewer agent
 
-When an agent settles, first check the plumbing yourself; this is cheap
-metadata, not source. `git log <base-sha>..HEAD` in the worktree is the
+When an implementer settles, first check the plumbing yourself; this
+is cheap metadata, not source. `git log <base-sha>..HEAD` in the worktree is the
 complete set of commits the package produced — taken from git, never from
 the agent's summary — and uncommitted leftovers in `git status` mean the
 brief wasn't followed even if the summary reads well. An empty range
@@ -283,9 +283,12 @@ path, the worktree path, and the base sha; the instruction to grade
 `git diff <base-sha>..HEAD` against the brief's criteria, with
 evidence, flagging anything outside the brief's scope; the statement
 that the review is read-only — a reviewer that "fixes" what it grades
-smuggles unreviewed edits into the merge; and the output contract —
-write the verdict to a file in the round directory and reply with only
-the path, since pane scrollback truncates long replies (step 6).
+smuggles unreviewed edits into the merge; the no-build rule from the
+implementer's brief — grading is reading, and a reviewer that runs the
+suite fights the serial validation (step 8) for caches and locks; and
+the output contract — write the verdict to a file in the round
+directory and reply with only the path, since pane scrollback
+truncates long replies (step 6).
 
 Reviewers are fleet agents: the same watch loop, wait block, states,
 and traps apply, and a settled reviewer means a verdict file to read.
@@ -320,7 +323,11 @@ only the package's own quick checks (it compiles, its own tests pass) —
 the repo's full suite runs once on the merge target (step 9), where
 cross-package failures actually show up. On failure, send the owning
 agent the verbatim failing output (not your paraphrase) and re-validate
-after the fix; long output is a file-drop (step 5).
+after the fix; long output is a file-drop (step 5). Grade the fix
+before re-validating: a mechanical one (a missed import, a brittle
+assertion) goes straight back to the build, but a fix that reworks
+logic goes through the still-alive reviewer first — no substantial
+diff reaches the merge ungraded.
 
 ## 9. Merge the round locally
 
