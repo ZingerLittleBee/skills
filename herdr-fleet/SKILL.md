@@ -61,36 +61,36 @@ slug. The package slug names everything the package owns — branch
 `feat/<slug>`, worktree label, agent, brief file — so `herdr agent list`
 reads as a status board; the round-slug names the brief directory
 (step 5) and, when the round needs a fresh merge target, that branch
-(step 3). Agent names are server-global and branches already live in the
+(below). Agent names are server-global and branches already live in the
 repo: check `herdr agent list` and `git branch --list "feat/*"` for
-collisions now, and pick a different slug rather than debug ambiguous
-targets mid-round.
+collisions now — the round-slug branch included — and pick a different
+slug rather than debug ambiguous targets mid-round.
 
-Present the plan — packages, branch names, merge order, agent kind per
-package — as a short table and get one confirmation before creating
-anything (skip only if the user already said to run unattended).
-
-## 3. One worktree per package
-
-First fix the round's **base** and **merge target** from the main repo's
+Now fix the round's **base** and **merge target** from the main repo's
 current branch:
 
 - Record the current branch and its head sha (`git rev-parse
   --abbrev-ref HEAD`, `git rev-parse HEAD`). That sha is the round's
-  base.
+  base — every worktree gets pinned to it (step 3).
 - If the current branch is shared and long-lived (the default branch,
   `develop`, `release/*`), the round must not land on it directly: the
   merge target is a new local branch `feat/<round-slug>` created from
   the base sha at merge time (step 9). Otherwise the current branch
-  itself is the merge target. Borderline cases are your judgment call —
-  state the choice in the step-2 plan.
+  itself is the merge target. Borderline cases are your judgment call.
+
+Present the plan — packages, branch names, merge order, merge target,
+agent kind per package — as a short table and get one confirmation
+before creating anything (skip only if the user already said to run
+unattended).
+
+## 3. One worktree per package
 
 ```bash
 herdr worktree create --cwd "$PWD" --branch feat/<slug> --base <sha> --label <slug> --no-focus
 ```
 
-Pin every package to the same `--base` commit (the round's base sha) and
-record it: it keeps packages from drifting apart if the branch moves
+Pin every package to the same `--base` commit (the round's base sha from
+step 2): it keeps packages from drifting apart if the branch moves
 mid-round, and it is the **baseline** every later verification diffs
 against.
 
@@ -157,8 +157,8 @@ The brief must carry:
 
 ## 6. Watch the round — this is your job now
 
-Between briefing and the last PR, the orchestrator's whole job is the watch
-loop. Do not end the turn to "wait for the agents", and do not drift into
+Between briefing and the final merge, the orchestrator's whole job is the
+watch loop. Do not end the turn to "wait for the agents", and do not drift into
 side work — an unwatched fleet stalls: a `blocked` agent burns wall-clock
 until someone answers it, and a crashed agent silently drops its package.
 
@@ -280,7 +280,7 @@ The round ends on a local branch — nothing gets pushed; publishing (push,
 PR, merging into the default branch) stays with the user. Once every
 package has passed review and its quick checks:
 
-1. Check out the merge target in the main repo. If step 3 chose a fresh
+1. Check out the merge target in the main repo. If step 2 chose a fresh
    target, create it now: `git switch -c feat/<round-slug> <base-sha>`;
    otherwise stay on the current branch.
 2. Merge the package branches into it in the agreed order, one at a time:
@@ -302,9 +302,8 @@ subscription seat, and will act on any stray input that reaches its pane.
 Ask it to quit with its own exit command
 (`/exit`, `/quit`, or ctrl+c / ctrl+d via `herdr agent send-keys`), then
 confirm the name is gone from `herdr agent list` and the pane is back at a
-shell prompt. Keep the pane — if later feedback needs fixes, start a
-fresh agent in the same pane and point it at the brief file plus the
-committed diff.
+shell prompt. Everything the round produced now lives on the merge
+target; anything needed after cleanup is a fresh agent's job there.
 
 ## 10. Clean up and report
 
