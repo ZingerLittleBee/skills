@@ -11,7 +11,8 @@ git worktree and a dedicated CLI coding agent inside herdr. You are the
 **orchestrator**: you slice the work, brief the agents, watch their state,
 dispatch reviewers, and run validation. You never implement, and you never
 pull package diffs into your own window — source lives in the agents'
-worktrees and gets graded by reviewer subagents (step 7). That split is
+worktrees and gets graded by dedicated reviewer agents in their own
+panes (step 7). That split is
 what makes the round safe: your judgment on package N stays sharp after
 babysitting packages A through M, and no two writers ever share a checkout.
 
@@ -21,8 +22,9 @@ babysitting packages A through M, and no two writers ever share a checkout.
   If not, say so and stop — do not drive herdr from outside herdr.
 - The main repo's working tree must be clean (`git status`); surface a dirty
   tree instead of working around it.
-- Check `herdr integration status`: every agent kind you plan to assign
-  needs its integration to read `current` — the watch loop's state
+- Check `herdr integration status`: every agent kind you plan to
+  assign — reviewer kinds included — needs its integration to read
+  `current` — the watch loop's state
   detection comes from that integration, so run
   `herdr integration install <kind>` for any kind reading `not installed`
   or `outdated`. (`herdr agent` lists the *supported* kinds only; whether
@@ -58,11 +60,12 @@ only what truly depends on another package's output:
 
 Give the round a short kebab-case **round-slug** and each package its own
 slug. The package slug names everything the package owns — branch
-`feat/<slug>`, worktree label, agent, brief file — so `herdr agent list`
-reads as a status board; the round-slug names the brief directory
-(step 5) and, when the round needs a fresh merge target, that branch
-(below). Agent names are server-global and branches already live in the
-repo: check `herdr agent list` and `git branch --list "feat/*"` for
+`feat/<slug>`, worktree label, agent, reviewer agent `<slug>-review`,
+brief file — so `herdr agent list` reads as a status board; the
+round-slug names the brief directory (step 5) and, when the round
+needs a fresh merge target, that branch (below). Agent names are
+server-global and branches already live in the repo: check
+`herdr agent list` and `git branch --list "feat/*"` for
 collisions now — the round-slug branch included — and pick a different
 slug rather than debug ambiguous targets mid-round.
 
@@ -216,10 +219,12 @@ changes state, read its recent output before deciding anything:
 herdr agent read <name> --source recent-unwrapped --lines 120
 ```
 
-Priorities inside the loop: answer `blocked` agents first (each is stalled
-wall-clock), then review settled ones (step 7), then check long-`working`
-ones — an agent whose output hasn't changed across several sweeps may be
-stuck on an unrecognized prompt or spinning; read the pane and decide.
+Priorities inside the loop: answer `blocked` agents first (each is
+stalled wall-clock), then act on settled ones — a settled implementer
+gets a reviewer dispatched, a settled reviewer gets its verdict read
+(step 7) — then check long-`working` ones — an agent whose output
+hasn't changed across several sweeps may be stuck on an unrecognized
+prompt or spinning; read the pane and decide.
 Surface progress to the user at transitions that matter (package settled,
 review sent, validation passed, merge landed), not on every wake.
 
@@ -246,7 +251,7 @@ Known traps and how to handle them:
 - Never send a new prompt to a `working` agent — it lands mid-turn and
   corrupts the run. Wait for `idle`/`done`/`blocked`.
 
-## 7. Review each package — with a reviewer subagent
+## 7. Review each package — with a dedicated reviewer agent
 
 When an agent settles, first check the plumbing yourself; this is cheap
 metadata, not source. `git log <base-sha>..HEAD` in the worktree is the
@@ -256,37 +261,56 @@ brief wasn't followed even if the summary reads well. An empty range
 means the package produced nothing: re-brief or drop it — an empty
 branch has nothing to merge and never reaches step 9.
 
-Then spawn a **reviewer subagent** to grade the diff — do not read it
-yourself. Package diffs pulled into the orchestrator window are exactly
+Then hand the diff to a **reviewer agent** — a fleet agent of its own,
+in its own pane — and do not read it yourself, and do not review in
+your own window. Package diffs pulled into the orchestrator are exactly
 the source this architecture keeps out: by the fourth package your
-judgment is swimming in the first three's implementation noise, and having
-briefed the round you also want it to succeed — a reviewer that wrote none
-of it grades without that bias. The reviewer needs only three inputs: the
-brief file path, the worktree path, and the base sha. It reads
-`git diff <base-sha>..HEAD`, returns a per-criterion verdict with
-evidence, and flags anything outside the brief's scope. State in the
-reviewer's brief that it is read-only — a reviewer that "fixes" what it
-grades smuggles unreviewed edits into the merge. Read-only is also what
-lets several reviews run in parallel while other agents are still
-working.
+judgment is swimming in the first three's implementation noise, and
+having briefed the round you also want it to succeed — a reviewer that
+wrote none of it grades without that bias. Split a review pane off the
+package's root pane, read the new pane id from the JSON, and start the
+reviewer in it:
 
-Reviewer model: one tier below the session model by default — strong
+```bash
+herdr pane split <root-pane-id> --cwd <worktree-path> --no-focus
+herdr agent start <slug>-review --kind <kind> --pane <new-pane-id>
+```
+
+The reviewer shares the implementer's worktree read-only — the intro's
+rule bans two *writers* per checkout, and a reviewer is not one. Its
+brief is a file-drop like any other and carries: the package brief's
+path, the worktree path, and the base sha; the instruction to grade
+`git diff <base-sha>..HEAD` against the brief's criteria, with
+evidence, flagging anything outside the brief's scope; the statement
+that the review is read-only — a reviewer that "fixes" what it grades
+smuggles unreviewed edits into the merge; and the output contract —
+write the verdict to a file in the round directory and reply with only
+the path, since pane scrollback truncates long replies (step 6).
+
+Reviewers are fleet agents: the same watch loop, wait block, states,
+and traps apply, and a settled reviewer means a verdict file to read.
+Reviews run no builds, so any number of reviewers can work while
+implementers are still working — the one-heavy-build rule is untouched.
+
+Reviewer kind: one tier below the implementer's by default — strong
 enough to genuinely parse the diff, cheap enough to run every round.
-Escalate to the session model for the packages you graded hardest: a
-reviewer much weaker than the code it grades rubber-stamps what it cannot
-parse. Never use the cheapest tier for code review.
+Escalate to your strongest kind for the packages you graded hardest: a
+reviewer much weaker than the code it grades rubber-stamps what it
+cannot parse. Never use the cheapest kind for code review.
 
 You adjudicate. With the verdicts in hand, decide accept, send back, or
 drop — that call needs round-level context (merge order, review budgets,
 how the packages interact) that only you hold. Send findings back to the
-implementing agent as a numbered review prompt and wait for the fix; long
-feedback is a file-drop (step 5). Budget 2 review rounds per package,
-then either accept with documented caveats or drop the package from the
-round and say why, stating what the round now lacks. A dropped
-package's worktree and branch stay in place for the user to inspect —
-its work exists nowhere else — but its agent gets shut down at the
-moment of the drop (the drill in step 9), not held for that step's
-green-suite gate.
+implementing agent as a numbered review prompt and wait for the fix;
+long feedback is a file-drop (step 5), and the reviewer stays alive to
+re-grade it. Budget 2 review rounds per package, then either accept
+with documented caveats or drop the package from the round and say why,
+stating what the round now lacks. When a package concludes, shut its
+reviewer down (the drill in step 9) — it holds a seat like any
+implementer. A dropped package's worktree and branch stay in place for
+the user to inspect — its work exists nowhere else — but its agents,
+implementer and reviewer alike, get shut down at the moment of the
+drop, not held for step 9's green-suite gate.
 
 ## 8. Validate serially
 
