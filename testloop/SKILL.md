@@ -168,7 +168,6 @@ time, then sweep structured state:
 
 ```bash
 herdr agent wait <tester-name> --timeout <min(60000, remaining-time-ms)>
-herdr agent list
 herdr agent get <tester-name>
 ```
 
@@ -192,9 +191,9 @@ wake, update the tracked state and act on it:
   FAIL result for every plan step.
 - **`unknown`:** read recent output and keep watching; it is never proof of
   completion. If it persists until the deadline, stop as an operational timeout.
-- **Agent missing:** if the name disappears from `agent list` or `agent get`
-  returns `agent_not_found`, read the pane by its recorded ID and report a crash;
-  do not treat partial result files as a completed turn.
+- **Agent missing:** if `agent get` returns `agent_not_found`, run `agent list`
+  once to confirm the live session, then read the pane by its recorded ID and
+  report a crash; do not treat partial result files as a completed turn.
 
 At the deadline, read the tester once, classify the turn as an operational
 timeout, and clean up unless the user explicitly extends it. Surface meaningful
