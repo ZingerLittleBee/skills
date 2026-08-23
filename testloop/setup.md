@@ -7,10 +7,9 @@ values.
 
 For a project configured by an older testloop version, replace `codex_cmd` with
 `codex_args` from the current template instead of preserving legacy launch
-flags, and add `test_timeout_ms`. If it has `test_agent_kind` /
-`test_agent_args`, require the kind to be `codex`, rename the arguments to
-`codex_args`, and remove the kind. Verify the result against `codex --help`,
-then show the migrated tester settings to the user before running.
+flags, and add `test_timeout_ms`. Verify the result against `codex --help`, then
+show the migrated tester settings to the user for confirmation. Never execute
+the legacy command.
 
 1. Scaffold both files from the [templates below](#templates) — write them
    verbatim, then replace the placeholders. Create the dir first:

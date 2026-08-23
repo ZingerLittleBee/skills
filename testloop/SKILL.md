@@ -1,6 +1,7 @@
 ---
 name: testloop
-description: "Run an interactive GUI test-fix loop through Herdr. The current agent plans, judges, and fixes while a Codex tester drives the app via computer use. Use for end-to-end GUI verification and iterative fixes."
+description: "Run a host-agnostic GUI test-fix loop through Herdr with a Codex tester."
+disable-model-invocation: true
 ---
 
 # testloop — interactive GUI test-fix loop
@@ -44,12 +45,8 @@ templates, fill in real values, and return here once the user has confirmed
 `build_cmd` and `codex_args`.
 
 If the files already exist, read both for context and go straight to the loop.
-If an existing config still has the legacy `codex_cmd`, stop before the loop and
-migrate it: replace the command with `codex_args` from the current setup
-template and add `test_timeout_ms`. If the config instead has
-`test_agent_kind` / `test_agent_args`, require the kind to be `codex`, rename
-the arguments to `codex_args`, and remove the kind. Show the migrated tester
-settings to the user for confirmation; never execute a legacy command.
+If an existing config still has the legacy `codex_cmd`, follow the migration in
+[setup.md](setup.md) and return here after the user confirms the result.
 
 ## Herdr preflight
 
@@ -156,12 +153,15 @@ Pass `codex_args` only after `--`:
 
 ```bash
 herdr agent start <tester-name> --kind codex --pane <new-pane-id> --timeout 120000 -- <codex_args>
-herdr agent prompt <tester-name> "Read <absolute-repo-dir>/.testloop/tester-prompt.txt and execute it."
+herdr agent prompt <tester-name> "Read <absolute-repo-dir>/.testloop/tester-prompt.txt and execute it." \
+  --wait --until working --until blocked --until idle --until done --timeout 10000
 ```
 
 This is a **file-drop**: keep the full prompt in the file and send only its
 absolute path, so long plans cannot be mangled by terminal paste or shell
-argument handling. Expand `codex_args` in order as separate arguments.
+argument handling. Expand `codex_args` in order as separate arguments. The
+short `--wait` makes submission observable; it returns on the first recognized
+post-submission state and does not wait for the test turn to finish.
 
 If `agent start` returns `agent_not_ready`, do not create another pane or call
 `agent start` again. Continue targeting the assigned name: inspect it with
