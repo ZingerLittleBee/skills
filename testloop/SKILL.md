@@ -57,8 +57,9 @@ confirmation; never execute the legacy command.
 Testloop must run from a Herdr-managed pane. Before touching the app, verify
 `HERDR_ENV=1`, then inspect `herdr --help`, `herdr agent`, `herdr pane`, and
 `herdr integration`. The installed binary is authoritative. Require the pane
-subcommands `split`, `send-text`, `send-keys`, and `close`, plus the agent
-subcommands `start`, `prompt`, `get`, `read`, `wait`, and `send-keys`.
+subcommands `layout`, `split`, `read`, `send-text`, `send-keys`, and `close`,
+plus the agent subcommands `list`, `start`, `prompt`, `get`, `read`, `wait`, and
+`send-keys`.
 
 Run `herdr integration status` and require the configured tester's integration
 to read `current` (`codex: current` for the default tester); lifecycle waiting is
@@ -71,8 +72,9 @@ a Codex tester, also verify `test_agent_args` against `codex --help`.
 
 Read `.testloop/config.yaml` for `build_cmd`, `target_kind`, `target_desc`,
 `test_agent_kind`, `test_agent_args`, `test_timeout_ms`, `repo_dir`, and
-`max_rounds`. Repeat up to `max_rounds` (default 8). Track the round number `N`,
-starting at 1. Announce each round:
+`max_rounds`. Resolve `repo_dir` to an absolute path before using it for Herdr
+commands or tester prompt paths. Repeat up to `max_rounds` (default 8). Track
+the round number `N`, starting at 1. Announce each round:
 `Round N — <scope or "broad">`.
 
 **Codex is stateless across rounds — by design.** Each round starts a fresh
@@ -81,7 +83,9 @@ round ends. The app is rebuilt and relaunched too. That keeps re-verification
 independent and prevents stale agent state from carrying forward. Cross-round
 continuity is carried by **you** (this persistent session), `project.md`, and the
 test plan — so if the tester keeps re-learning the same navigation, enrich
-`project.md`; do not reuse its session.
+`project.md`; do not reuse its session across rounds. Within a round, an
+escalation deliberately continues in the same tester session so it retains the
+work that led to the question.
 
 ### 1. Plan
 
@@ -153,7 +157,7 @@ unique live agent name matching `[a-z][a-z0-9_-]{0,31}` (for example,
 configured agent. Pass `test_agent_args` only after `--`:
 
 ```bash
-herdr agent start <tester-name> --kind <test_agent_kind> --pane <new-pane-id> -- <test_agent_args>
+herdr agent start <tester-name> --kind <test_agent_kind> --pane <new-pane-id> --timeout 120000 -- <test_agent_args>
 herdr agent prompt <tester-name> "Read <absolute-repo-dir>/.testloop/tester-prompt.txt and execute it."
 ```
 
@@ -164,14 +168,24 @@ argument handling. Expand `test_agent_args` in order as separate arguments.
 If `agent start` returns `agent_not_ready`, do not create another pane or call
 `agent start` again. Continue targeting the assigned name: inspect it with
 `agent get` and `agent read`, then wait for it to become idle or ask the user if
-it is blocked. If `agent prompt` returns `agent_prompt_stalled`, inspect the
-tester; re-send the pointer once only when it is idle and produced no meaningful
-output. The stalled and swallowed-prompt paths share this one retry budget.
+it is blocked. If startup reaches the explicit timeout, run `agent get` once. If
+the name exists, use the same inspect-and-wait path; otherwise read the recorded
+pane and report an operational startup failure. Do not re-split or re-start
+after either startup error.
 
-**e. Watch the tester** — `agent prompt` submits the turn; it does not prove the
-turn finished. Record the turn start time and a deadline `test_timeout_ms` later.
-Until the turn reaches a terminal outcome, block for at most 60 seconds at a
-time, then sweep structured state:
+If `agent prompt` returns `agent_blocked`, enter the step-e **`blocked`** path;
+record that the file-drop pointer has not been submitted. Once the tester is
+idle after the blocker is resolved, submit the original pointer. This initial
+submission does not consume the pointer retry budget. If `agent prompt` returns
+`agent_prompt_stalled`, inspect the tester; re-send the pointer once only when
+it is idle and produced no meaningful output. The stalled and swallowed-prompt
+paths share this one retry budget.
+
+**e. Watch the tester** — an accepted `agent prompt` submits the turn; it does
+not prove the turn finished. Track whether the file-drop pointer was accepted.
+Once it is accepted, record the turn start time and a deadline
+`test_timeout_ms` later. Until the turn reaches a terminal outcome, block for at
+most 60 seconds at a time, then sweep structured state:
 
 ```bash
 herdr agent wait <tester-name> --timeout <min(60000, remaining-time-ms)>
@@ -191,8 +205,22 @@ wake, update the tracked state and act on it:
   use `herdr agent send-keys <tester-name> <authorized-logical-key>`. For free
   text, use `herdr pane send-text <new-pane-id> "<authorized-text>"` followed by
   `herdr pane send-keys <new-pane-id> enter`. `agent prompt` rejects blocked
-  agents, so it is not an input path here. Once the input is accepted and the
-  tester returns to `working`, set a fresh `test_timeout_ms` deadline.
+  agents, so it is not an input path here. After sending the input, wait up to
+  five seconds for `working`, `idle`, or `done`, then run `agent get`:
+
+  ```bash
+  herdr agent wait <tester-name> --until working --until idle --until done --timeout 5000
+  herdr agent get <tester-name>
+  ```
+
+  If it is still blocked, take a fresh `agent read` and compare the visible
+  approval or question with the one just answered. For the same dialog, tell
+  the user the input was not accepted and wait for instructions rather than
+  re-sending or re-asking it as a new question. Relay a genuinely different
+  dialog as a new blocker. If the file-drop pointer was not accepted earlier,
+  wait for `idle` or `done`, then submit it and start the test deadline. If the
+  turn was already running, set a fresh `test_timeout_ms` deadline when the
+  tester returns to `working`.
 - **`idle` / `done`:** check `.testloop/decision.json` first. If present, relay
   its question, write the user's answer to `decision-answer.txt`, update the
   prompt with the escalation paragraph, remove the answered JSON and any partial
@@ -351,11 +379,11 @@ If you cannot decide something on your own (ambiguous trade-off, unexpected
 situation, unclear requirement), DO NOT guess. Instead write a JSON object to
 <abs>/.testloop/decision.json of the form {"needs_decision": true, "question":
 "<your question>", "options": ["<option A>", "<option B>"]} and stop. A human will
-answer and you will be re-run with the answer.
+answer and you will receive a follow-up prompt with the updated instructions.
 ```
 
-**On a re-run after an escalation only,** insert this paragraph right before the
-final "If you cannot decide" paragraph (drop it on the first run):
+**On a follow-up after an escalation only,** insert this paragraph right before
+the final "If you cannot decide" paragraph (drop it on the first prompt):
 
 ```text
 A human answered your previous escalation with:

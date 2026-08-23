@@ -73,7 +73,7 @@ output path. Treat the Tauri snippet as an illustration, not a default.
 
 ```yaml
 # testloop project config
-repo_dir: .                      # where Claude fixes bugs (project root)
+repo_dir: /absolute/path/to/project  # project root; must be absolute
 target_kind: web                 # web | desktop | mobile (informational)
 target_desc: |
   Describe the app under test so Codex knows what it is driving.
