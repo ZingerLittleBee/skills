@@ -1,15 +1,14 @@
 ---
 name: testloop
-description: "Interactive Claude<->Codex GUI test-fix loop — Claude plans, judges, and fixes; Herdr runs a Codex tester that drives the app via computer use. Usage: /testloop [scope]"
-disable-model-invocation: true
+description: "Run an interactive GUI test-fix loop through Herdr. The current agent plans, judges, and fixes while a Codex tester drives the app via computer use. Use for end-to-end GUI verification and iterative fixes."
 ---
 
-# testloop — interactive test-fix loop
+# testloop — interactive GUI test-fix loop
 
-You are the **driver** of a Claude ↔ Codex loop. There is no separate program:
-this skill *is* testloop. You do the mechanical steps yourself with the Bash,
-file, and Herdr CLI tools — write templates, run the tester, snapshot rounds —
-right here where the user can watch.
+You are the **driver** of the loop. There is no separate program: this skill
+*is* testloop. Use the host agent's available shell, file, and Herdr CLI tools
+to write templates, run the tester, and snapshot rounds where the user can
+watch.
 
 The split of responsibilities:
 
@@ -21,8 +20,8 @@ The split of responsibilities:
   **already-running** app via computer use to execute your test plan and writes
   the results. It never touches the lifecycle or project source.
 
-The optional argument after `/testloop` is the **scope** to focus this run
-(e.g. `login flow`, `settings sync`). No argument = test broadly.
+When the invocation includes an optional **scope** (for example, `login flow`
+or `settings sync`), focus the run there. With no scope, test broadly.
 
 ## Golden rules
 
@@ -42,15 +41,15 @@ The optional argument after `/testloop` is the **scope** to focus this run
 `.testloop/config.yaml` and `.testloop/project.md` are the loop's inputs. If
 either is missing, follow [setup.md](setup.md) — scaffold both from its
 templates, fill in real values, and return here once the user has confirmed
-`build_cmd`, `test_agent_kind`, and `test_agent_args`.
+`build_cmd` and `codex_args`.
 
 If the files already exist, read both for context and go straight to the loop.
 If an existing config still has the legacy `codex_cmd`, stop before the loop and
-migrate it: set `test_agent_kind: codex`, remove the leading `codex exec`, keep
-only flags supported by the current interactive `codex --help`, translate
-`--yolo` to `--dangerously-bypass-approvals-and-sandbox`, and add
-`test_timeout_ms`. Show the migrated tester settings to the user for
-confirmation; never execute the legacy command.
+migrate it: replace the command with `codex_args` from the current setup
+template and add `test_timeout_ms`. If the config instead has
+`test_agent_kind` / `test_agent_args`, require the kind to be `codex`, rename
+the arguments to `codex_args`, and remove the kind. Show the migrated tester
+settings to the user for confirmation; never execute a legacy command.
 
 ## Herdr preflight
 
@@ -61,20 +60,19 @@ subcommands `layout`, `split`, `read`, `send-text`, `send-keys`, and `close`,
 plus the agent subcommands `list`, `start`, `prompt`, `get`, `read`, `wait`, and
 `send-keys`.
 
-Run `herdr integration status` and require the configured tester's integration
-to read `current` (`codex: current` for the default tester); lifecycle waiting is
-not reliable without it. If it is missing or outdated, show the exact status and
-ask before running `herdr integration install <matching-integration-kind>`, then
-re-check. Stop if the environment, commands, or integration are not ready. For
-a Codex tester, also verify `test_agent_args` against `codex --help`.
+Run `herdr integration status` and require `codex` to read `current`; lifecycle
+waiting is not reliable without it. If it is missing or outdated, show the exact
+status and ask before running `herdr integration install codex`, then re-check.
+Stop if the environment, commands, or integration are not ready. Verify
+`codex_args` against the current interactive `codex --help`.
 
 ## The loop
 
 Read `.testloop/config.yaml` for `build_cmd`, `target_kind`, `target_desc`,
-`test_agent_kind`, `test_agent_args`, `test_timeout_ms`, `repo_dir`, and
-`max_rounds`. Resolve `repo_dir` to an absolute path before using it for Herdr
-commands or tester prompt paths. Repeat up to `max_rounds` (default 8). Track
-the round number `N`, starting at 1. Announce each round:
+`codex_args`, `test_timeout_ms`, `repo_dir`, and `max_rounds`. Resolve `repo_dir`
+to an absolute path before using it for Herdr commands or tester prompt paths.
+Repeat up to `max_rounds` (default 8). Track the round number `N`, starting at 1.
+Announce each round:
 `Round N — <scope or "broad">`.
 
 **Codex is stateless across rounds — by design.** Each round starts a fresh
@@ -153,17 +151,17 @@ herdr pane split --current --direction <right-or-down> --cwd "<absolute-repo-dir
 
 Read the new pane ID from `.result.pane.pane_id`; never predict it. Choose a
 unique live agent name matching `[a-z][a-z0-9_-]{0,31}` (for example,
-`testloop-rN`, adding a suffix if that name already exists), then start the
-configured agent. Pass `test_agent_args` only after `--`:
+`testloop-rN`, adding a suffix if that name already exists), then start Codex.
+Pass `codex_args` only after `--`:
 
 ```bash
-herdr agent start <tester-name> --kind <test_agent_kind> --pane <new-pane-id> --timeout 120000 -- <test_agent_args>
+herdr agent start <tester-name> --kind codex --pane <new-pane-id> --timeout 120000 -- <codex_args>
 herdr agent prompt <tester-name> "Read <absolute-repo-dir>/.testloop/tester-prompt.txt and execute it."
 ```
 
 This is a **file-drop**: keep the full prompt in the file and send only its
 absolute path, so long plans cannot be mangled by terminal paste or shell
-argument handling. Expand `test_agent_args` in order as separate arguments.
+argument handling. Expand `codex_args` in order as separate arguments.
 
 If `agent start` returns `agent_not_ready`, do not create another pane or call
 `agent start` again. Continue targeting the assigned name: inspect it with
