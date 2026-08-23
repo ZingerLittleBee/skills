@@ -1,9 +1,16 @@
 # testloop — first-run setup
 
-`.testloop/config.yaml` (build command, `codex_cmd`, `max_rounds`) and
+`.testloop/config.yaml` (build command, Herdr tester settings, `max_rounds`) and
 `.testloop/project.md` (the project profile used as shared context) are the
 loop's inputs. Fill them in yourself — inspect the project and write the real
 values.
+
+For a project configured by an older testloop version, replace `codex_cmd`
+instead of keeping both formats. Set `test_agent_kind: codex`, preserve the
+interactive flags that followed `codex exec` under `test_agent_args`, translate
+`--yolo` to `--dangerously-bypass-approvals-and-sandbox`, drop exec-only flags,
+and add `test_timeout_ms`. Verify the result against `codex --help`, then show
+the migrated tester settings to the user before running.
 
 1. Scaffold both files from the [templates below](#templates) — write them
    verbatim, then replace the placeholders. Create the dir first:
@@ -12,10 +19,11 @@ values.
    `tauri.conf.json` / `Cargo.toml` / vite / next config, `CLAUDE.md`,
    `AGENTS.md` — and edit the two files with real values:
    - `config.yaml`: real `build_cmd`, `target_kind` (`web` / `desktop` /
-     `mobile`), `target_desc`, `codex_cmd`, `max_rounds`.
+     `mobile`), `target_desc`, `test_agent_kind`, `test_agent_args`,
+     `test_timeout_ms`, `max_rounds`.
    - `project.md`: overview, structure, how to launch, how to test, gotchas.
-3. **Show the user the filled-in `config.yaml` and confirm** the `build_cmd` and
-   `codex_cmd` before continuing.
+3. **Show the user the filled-in `config.yaml` and confirm** the `build_cmd`,
+   `test_agent_kind`, and `test_agent_args` before continuing.
 4. Most `.testloop/` files are scratch artifacts, but the loop's final step
    writes a concise per-run report to `.testloop/reports/` that is meant to be
    committed. Offer to add this to the project's `.gitignore`:
@@ -76,17 +84,19 @@ target_desc: |
 # launch. Desktop: must yield a real, installed app -- not a dev server.
 build_cmd: pnpm build
 
-# How Codex is invoked to DRIVE the running app. Run WITHOUT a sandbox: Codex
-# drives the GUI via computer use (screenshots + clicks -- side effects a sandbox
-# blocks) and writes results. `--yolo` (alias for
-# `--dangerously-bypass-approvals-and-sandbox`) also skips approval prompts so the
-# background run is never left waiting on one.
-# `-m gpt-5.6-terra` pins the loop to the balanced agentic coding model instead of
-# silently inheriting a potentially older model from ~/.codex/config.toml.
-# `-c model_reasoning_effort=medium` keeps thinking moderate -- driving a GUI to
-# a written plan rarely needs max reasoning; raise to high/xhigh if Codex fumbles
-# the steps (or drop only this flag to inherit your reasoning-effort default).
-codex_cmd: codex exec --yolo -m gpt-5.6-terra -c model_reasoning_effort=medium
+# Herdr starts this interactive agent in a sibling pane. The kind must be listed
+# by `herdr agent`; native agent arguments follow Herdr's `--` separator.
+test_agent_kind: codex
+test_agent_args:
+  - --dangerously-bypass-approvals-and-sandbox
+  - -m
+  - gpt-5.6-terra
+  - -c
+  - model_reasoning_effort=medium
+
+# Maximum time for one tester turn. The main agent inspects Herdr state when this
+# expires instead of assuming the test passed or failed.
+test_timeout_ms: 1800000
 
 max_rounds: 8                    # hard backstop against infinite loops
 ```
