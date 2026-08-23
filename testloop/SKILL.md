@@ -58,8 +58,9 @@ Testloop must run from a Herdr-managed pane. Before touching the app, verify
 `HERDR_ENV=1`, then run `herdr --help` and `herdr agent` to confirm the installed
 CLI surface. The installed binary is authoritative. If the environment check
 fails or the required `pane split`, `agent start`, `agent prompt`, `agent get`,
-`agent read`, and `pane close` commands are unavailable, stop and tell the user.
-For a Codex tester, also verify `test_agent_args` against `codex --help`.
+`agent read`, `agent wait`, and `pane close` commands are unavailable, stop and
+tell the user. For a Codex tester, also verify `test_agent_args` against
+`codex --help`.
 
 ## The loop
 
@@ -146,48 +147,66 @@ configured agent. Pass `test_agent_args` only after `--`:
 
 ```bash
 herdr agent start <tester-name> --kind <test_agent_kind> --pane <new-pane-id> -- <test_agent_args>
-herdr agent prompt <tester-name> "$(cat <absolute-repo-dir>/.testloop/tester-prompt.txt)" --wait --timeout <test_timeout_ms>
+herdr agent prompt <tester-name> "Read <absolute-repo-dir>/.testloop/tester-prompt.txt and execute it."
 ```
 
-Expand `test_agent_args` in order as separate arguments. If `agent start`
-returns `agent_not_ready`, do not create another pane or call `agent start`
-again. Continue targeting the assigned name: inspect it with `agent get` and
-`agent read`, then wait for it to become idle or ask the user if it is blocked.
+This is a **file-drop**: keep the full prompt in the file and send only its
+absolute path, so long plans cannot be mangled by terminal paste or shell
+argument handling. Expand `test_agent_args` in order as separate arguments.
 
-`agent prompt --wait` returns when the tester settles at `idle`, `done`, or
-`blocked`. Herdr lifecycle state replaces log polling. The user can watch the
-tester pane live; you can inspect it without changing focus:
+If `agent start` returns `agent_not_ready`, do not create another pane or call
+`agent start` again. Continue targeting the assigned name: inspect it with
+`agent get` and `agent read`, then wait for it to become idle or ask the user if
+it is blocked. If `agent prompt` returns `agent_prompt_stalled`, inspect the
+tester; re-send the pointer once only when it is idle and produced no meaningful
+output. The stalled and swallowed-prompt paths share this one retry budget.
+
+**e. Watch the tester** — `agent prompt` submits the turn; it does not prove the
+turn finished. Record the turn start time and a deadline `test_timeout_ms` later.
+Until the turn reaches a terminal outcome, block for at most 60 seconds at a
+time, then sweep structured state:
 
 ```bash
+herdr agent wait <tester-name> --timeout <min(60000, remaining-time-ms)>
+herdr agent list
 herdr agent get <tester-name>
-herdr agent read <tester-name> --source recent-unwrapped --lines 120
 ```
 
-**e. When the tester settles:**
+`agent wait` returns immediately when the tester reaches `idle`, `done`, or
+`blocked`; its timeout is a normal liveness sweep, not a test verdict. On every
+wake, update the tracked state and act on it:
 
-- **Inspect blocked or failed runs.** Read `agent get` and `agent read` before
-  deciding what to do. Never answer an approval or unexpected question on the
-  user's behalf. A timeout is not a test verdict: inspect whether the tester is
-  still making progress, then ask the user whether to keep waiting or stop. If
-  the tester fails or becomes `unknown`, report the observed state and pane
-  output; do not infer completion.
-- **Verify the tester wrote results.** If `.testloop/test-results.md` is missing
-  or empty after an `idle` or `done` result, classify the round as an operational
-  failure, clean up, and tell the user what happened; do not fabricate results.
-- **Handle escalations.** If `.testloop/decision.json` appears, the tester
-  escalated a question it couldn't decide. Read it, relay the question to the
-  user, get an answer, write it to `.testloop/decision-answer.txt`, add the "A
-  human answered your previous escalation" paragraph (see the template) to
-  `.testloop/tester-prompt.txt`, and prompt the same tester again (the app is
-  still running). Remove the answered `decision.json` immediately before the
-  follow-up prompt so a stale decision cannot be mistaken for a new escalation.
-- **Clean up resources you created.** Before leaving the round for any reason
-  other than waiting for a human answer, stop the app — macOS desktop:
-  `osascript -e 'quit
-  app "<AppName>"'`; web/mobile: stop the server/simulator however it was started
-  — then close the exact tester pane returned by `pane split` with `herdr pane
-  close <new-pane-id>`. Keep the pane open while waiting for a human answer, and
-  never close a pane testloop did not create.
+- **`working`:** leave it alone. After a timeout sweep, read recent output only
+  when progress is unclear; never send a second prompt into an active turn.
+- **`blocked`:** immediately read the tester with `agent read`, using the
+  `recent-unwrapped` source and 120 lines. Relay the exact approval or question
+  to the user and wait for their answer. Send only the input they authorize,
+  using the appropriate Herdr input command for the visible control.
+- **`idle` / `done`:** check `.testloop/decision.json` first. If present, relay
+  its question, write the user's answer to `decision-answer.txt`, update the
+  prompt with the escalation paragraph, remove the answered JSON, and submit the
+  same file-drop pointer again with a fresh deadline. If no decision or complete
+  result exists and this is the first immediate settle with no meaningful
+  output, re-send the pointer once; otherwise it is an operational failure.
+  Accept the turn as complete only when `test-results.md` contains a PASS or
+  FAIL result for every plan step.
+- **`unknown`:** read recent output and keep watching; it is never proof of
+  completion. If it persists until the deadline, stop as an operational timeout.
+- **Agent missing:** if the name disappears from `agent list` or `agent get`
+  returns `agent_not_found`, read the pane by its recorded ID and report a crash;
+  do not treat partial result files as a completed turn.
+
+At the deadline, read the tester once, classify the turn as an operational
+timeout, and clean up unless the user explicitly extends it. Surface meaningful
+state transitions to the user, not every unchanged timeout sweep.
+
+**f. Clean up resources you created.** Before leaving the round for any reason
+other than waiting for human input, stop the app. For macOS desktop, use
+`osascript -e 'quit app "<AppName>"'`; for web/mobile, stop the server or
+simulator as documented in `project.md`. Then close the exact tester pane
+returned by `pane split` with `herdr pane close <new-pane-id>`. Keep the pane
+open while waiting for human input, and never close a pane testloop did not
+create.
 
 ### 3. Judge
 

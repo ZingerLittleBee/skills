@@ -94,8 +94,9 @@ test_agent_args:
   - -c
   - model_reasoning_effort=medium
 
-# Maximum time for one tester turn. The main agent inspects Herdr state when this
-# expires instead of assuming the test passed or failed.
+# Wall-clock deadline for one tester prompt. The Herdr watch loop wakes on state
+# changes and at least every 60 seconds; reaching this deadline is an operational
+# timeout, not a test verdict.
 test_timeout_ms: 1800000
 
 max_rounds: 8                    # hard backstop against infinite loops
