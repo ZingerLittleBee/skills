@@ -55,12 +55,17 @@ confirmation; never execute the legacy command.
 ## Herdr preflight
 
 Testloop must run from a Herdr-managed pane. Before touching the app, verify
-`HERDR_ENV=1`, then run `herdr --help` and `herdr agent` to confirm the installed
-CLI surface. The installed binary is authoritative. If the environment check
-fails or the required `pane split`, `agent start`, `agent prompt`, `agent get`,
-`agent read`, `agent wait`, and `pane close` commands are unavailable, stop and
-tell the user. For a Codex tester, also verify `test_agent_args` against
-`codex --help`.
+`HERDR_ENV=1`, then inspect `herdr --help`, `herdr agent`, `herdr pane`, and
+`herdr integration`. The installed binary is authoritative. Require the pane
+subcommands `split`, `send-text`, `send-keys`, and `close`, plus the agent
+subcommands `start`, `prompt`, `get`, `read`, `wait`, and `send-keys`.
+
+Run `herdr integration status` and require the configured tester's integration
+to read `current` (`codex: current` for the default tester); lifecycle waiting is
+not reliable without it. If it is missing or outdated, show the exact status and
+ask before running `herdr integration install <matching-integration-kind>`, then
+re-check. Stop if the environment, commands, or integration are not ready. For
+a Codex tester, also verify `test_agent_args` against `codex --help`.
 
 ## The loop
 
@@ -100,7 +105,8 @@ The lifecycle is yours; hand the running app to Codex only for the driving.
 
 **Confirm it succeeded** — exit code 0, and for desktop the `.app` is actually in
 place. If build/install fails, **stop and tell the user** — do NOT continue, or
-Codex will drive a **stale build** and produce misleading results.
+Codex will drive a **stale build** and produce misleading results. Record an
+operational failure, then go through cleanup (step f) and wrap-up (step 6).
 
 **b. Launch & confirm ready** — start the app, then confirm it is actually up
 before handing off. **Do NOT just sleep a fixed time** — a heavy app or a
@@ -115,7 +121,8 @@ pgrep -f "<AppName>" >/dev/null && echo up || echo "NOT running"
 
 Check `project.md` for a readiness signal (a window/screen it should reach, a
 port that should respond) and give it time to get there. If it never comes up,
-stop and tell the user.
+record an operational failure, then go through cleanup (step f) and wrap-up
+(step 6).
 
 **Running is enough — foreground is not required.** Do not demand the app stay
 frontmost or that the user keep their hands off the machine: Codex's computer
@@ -179,16 +186,21 @@ wake, update the tracked state and act on it:
   when progress is unclear; never send a second prompt into an active turn.
 - **`blocked`:** immediately read the tester with `agent read`, using the
   `recent-unwrapped` source and 120 lines. Relay the exact approval or question
-  to the user and wait for their answer. Send only the input they authorize,
-  using the appropriate Herdr input command for the visible control.
+  to the user and wait for their answer; human wait time is outside the turn
+  deadline. Send only the input they authorize. For a menu or approval control,
+  use `herdr agent send-keys <tester-name> <authorized-logical-key>`. For free
+  text, use `herdr pane send-text <new-pane-id> "<authorized-text>"` followed by
+  `herdr pane send-keys <new-pane-id> enter`. `agent prompt` rejects blocked
+  agents, so it is not an input path here. Once the input is accepted and the
+  tester returns to `working`, set a fresh `test_timeout_ms` deadline.
 - **`idle` / `done`:** check `.testloop/decision.json` first. If present, relay
   its question, write the user's answer to `decision-answer.txt`, update the
-  prompt with the escalation paragraph, remove the answered JSON, and submit the
-  same file-drop pointer again with a fresh deadline. If no decision or complete
-  result exists and this is the first immediate settle with no meaningful
-  output, re-send the pointer once; otherwise it is an operational failure.
-  Accept the turn as complete only when `test-results.md` contains a PASS or
-  FAIL result for every plan step.
+  prompt with the escalation paragraph, remove the answered JSON and any partial
+  `test-results.md`, then submit the same file-drop pointer again with a fresh
+  deadline. If no decision or complete result exists and this is the first
+  immediate settle with no meaningful output, re-send the pointer once;
+  otherwise it is an operational failure. Accept the turn as complete only when
+  `test-results.md` contains a PASS or FAIL result for every plan step.
 - **`unknown`:** read recent output and keep watching; it is never proof of
   completion. If it persists until the deadline, stop as an operational timeout.
 - **Agent missing:** if `agent get` returns `agent_not_found`, run `agent list`
@@ -199,13 +211,17 @@ At the deadline, read the tester once, classify the turn as an operational
 timeout, and clean up unless the user explicitly extends it. Surface meaningful
 state transitions to the user, not every unchanged timeout sweep.
 
+Every terminal operational failure in steps a-e goes through cleanup below and
+then wrap-up (step 6); do not leave failed runs unreported.
+
 **f. Clean up resources you created.** Before leaving the round for any reason
-other than waiting for human input, stop the app. For macOS desktop, use
+other than waiting for human input, stop any app or service this round started.
+For macOS desktop, use
 `osascript -e 'quit app "<AppName>"'`; for web/mobile, stop the server or
 simulator as documented in `project.md`. Then close the exact tester pane
-returned by `pane split` with `herdr pane close <new-pane-id>`. Keep the pane
-open while waiting for human input, and never close a pane testloop did not
-create.
+returned by `pane split`, when one was created, with `herdr pane close
+<new-pane-id>`. Keep the pane open while waiting for human input, and never close
+a pane testloop did not create.
 
 ### 3. Judge
 
@@ -251,8 +267,9 @@ re-testing any fix and watching for regressions.
 
 ### 6. Wrap up — leave a run report
 
-Every path that ends the run — **pass**, `max_rounds` exhausted, or a **human**
-stop that the user does not continue from — goes through this step.
+Every path that ends the run — **pass**, `max_rounds` exhausted, a **human** stop
+that the user does not continue from, or an **operational failure** — goes
+through this step.
 
 The other `.testloop/` files are git-ignored scratch, so without this step a run
 leaves no trace in the repo. Distill the run into
@@ -266,10 +283,10 @@ git check-ignore -q .testloop/reports/probe && echo "ignored — update .gitigno
 ```
 
 Write the report from your own understanding of the run — do **not** paste from
-`test-results.md` or the Codex log. Raw artifacts can carry whatever happened to
-be on screen or in output: tokens, emails, account names, absolute home paths.
-None of that belongs in a committed file; if a credential is relevant, refer to
-it by its environment-variable name.
+`test-results.md` or tester pane output. Raw artifacts can carry whatever
+happened to be on screen or in output: tokens, emails, account names, absolute
+home paths. None of that belongs in a committed file; if a credential is
+relevant, refer to it by its environment-variable name.
 
 Keep it under a page. A reader months from now wants to know what was covered
 and what came of it — not a step-by-step transcript:
