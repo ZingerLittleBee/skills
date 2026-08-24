@@ -324,12 +324,15 @@ record the verdict's exact commit as the package's `accepted_sha`.
 After any drop, present the reduced package set and what it no longer
 delivers, then get confirmation before merging the remaining packages
 (unless the user already authorized unattended continuation after drops).
-A dropped package's worktree and branch stay in place for the user to
-inspect — its work exists nowhere else — but its agents, implementer and
-reviewer alike, get shut down at the moment of the drop, not held for
-step 9's green-suite gate. An accepted package's implementer and reviewer
-may be shut down after its quick checks pass; step 9 dispatches dedicated
-agents if merge-target work is needed.
+Closing agent sessions is a package completion criterion. A dropped
+package's worktree and branch stay in place for the user to inspect — its
+work exists nowhere else — but its implementer and reviewer sessions close
+at the moment of the drop. An accepted package's implementer and reviewer
+sessions close immediately after its quick checks pass. Do not mark the
+package concluded until both names are gone from `herdr agent list` and
+their panes are back at shell prompts, using the shutdown procedure in
+step 9. Merge-target work uses dedicated agents instead of keeping package
+sessions alive.
 
 ## 8. Validate serially
 
@@ -459,4 +462,4 @@ to the agents and diff-grading to the reviewers; validation and merge use
 the exact clean commit named by the verdict; exactly one heavy build runs
 at a time; the round ends on a local branch and publishing stays with the
 user; a worktree holding dirty or unmerged work stays in place; a finished
-agent gets shut down.
+agent session closes before its package or merge task is considered done.
