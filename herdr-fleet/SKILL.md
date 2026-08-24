@@ -1,6 +1,6 @@
 ---
 name: herdr-fleet
-description: "Run one round of parallel implementation across multiple CLI coding agents (claude, codex, droid, grok, …) in herdr-managed git worktrees, one package per worktree, merged back into one local branch. Invoke with /herdr-fleet <tasks or backlog description>."
+description: "Run one round of parallel implementation across multiple CLI coding agents (claude, codex, droid, grok, …) in herdr-managed git worktrees, one package per worktree, merged back into one local branch. Invoke with /herdr-fleet followed by tasks or a backlog description."
 disable-model-invocation: true
 ---
 
@@ -61,6 +61,7 @@ only what truly depends on another package's output:
 Give the round a short kebab-case **round-slug** and each package its own
 slug. The package slug names everything the package owns — branch
 `feat/<slug>`, worktree label, agent, reviewer agent `<slug>-review`,
+merge fixer `<slug>-merge`, merge reviewer `<slug>-merge-review`, and
 brief file — so `herdr agent list` reads as a status board; the
 round-slug names the brief directory (step 5) and, when the round
 needs a fresh merge target, that branch (below). Agent names are
@@ -211,9 +212,10 @@ verified against a live fleet:
   vanishing mid-wait, or one stuck in `unknown`, which `herdr agent
   wait` never fires on.
 
-Keep a per-package status board — agent state, last state change, review
-rounds used, next action — and update it on every wake. When an agent
-changes state, read its recent output before deciding anything:
+Keep a per-package status board — agent state, last state change,
+`candidate_sha`, `accepted_sha`, review rounds used, validation state,
+next action — and update it on every wake. When an agent changes state,
+read its recent output before deciding anything:
 
 ```bash
 herdr agent read <name> --source recent-unwrapped --lines 120
@@ -235,8 +237,12 @@ Known traps and how to handle them:
   start with no meaningful output, re-send the pointer prompt — the brief
   file is still on disk, which is one reason it is a file.
 - **`blocked`** means the agent is showing an approval or question UI. Read
-  the screen before acting; answer with `herdr agent prompt` for free-text
-  questions or `herdr agent send-keys <name> <key>` for menu-style prompts.
+  the screen before acting. For a menu, use
+  `herdr agent send-keys <name> <key>`. For an in-scope free-text answer,
+  use `herdr pane send-text <pane-id> <text>` followed by
+  `herdr pane send-keys <pane-id> enter`; `agent prompt` rejects a blocked
+  agent with `agent_blocked`. A question that needs new authority or a user
+  decision goes to the user instead of being answered on their behalf.
 - **Alternate-screen output is unrecoverable.** Agents that render on the
   terminal's alternate screen never feed scrolled-off rows into herdr's
   scrollback, so raising `--lines` cannot recover a long finished reply.
@@ -254,12 +260,13 @@ Known traps and how to handle them:
 ## 7. Review each package — with a dedicated reviewer agent
 
 When an implementer settles, first check the plumbing yourself; this
-is cheap metadata, not source. `git log <base-sha>..HEAD` in the worktree is the
-complete set of commits the package produced — taken from git, never from
-the agent's summary — and uncommitted leftovers in `git status` mean the
-brief wasn't followed even if the summary reads well. An empty range
-means the package produced nothing: re-brief or drop it — an empty
-branch has nothing to merge and never reaches step 9.
+is cheap metadata, not source. `git log <base-sha>..HEAD` in the worktree is
+the complete set of commits the package produced — taken from git, never
+from the agent's summary. Require `git status --porcelain` to be empty,
+then record `candidate_sha=$(git rev-parse HEAD)`. Uncommitted leftovers
+mean the brief was not followed and cannot enter review or validation.
+An empty range means the package produced nothing: re-brief or drop it —
+an empty branch has nothing to merge and never reaches step 9.
 
 Then hand the diff to a **reviewer agent** — a fleet agent of its own,
 in its own pane — and do not read it yourself, and do not review in
@@ -279,16 +286,17 @@ herdr agent start <slug>-review --kind <kind> --pane <new-pane-id>
 The reviewer shares the implementer's worktree read-only — the intro's
 rule bans two *writers* per checkout, and a reviewer is not one. Its
 brief is a file-drop like any other and carries: the package brief's
-path, the worktree path, and the base sha; the instruction to grade
-`git diff <base-sha>..HEAD` against the brief's criteria, with
-evidence, flagging anything outside the brief's scope; the statement
-that the review is read-only — a reviewer that "fixes" what it grades
-smuggles unreviewed edits into the merge; the no-build rule from the
-implementer's brief — grading is reading, and a reviewer that runs the
-suite fights the serial validation (step 8) for caches and locks; and
-the output contract — write the verdict to a file in the round
-directory and reply with only the path, since pane scrollback
-truncates long replies (step 6).
+path, the worktree path, the base sha, and the recorded `candidate_sha`;
+the instruction to grade `git diff <base-sha> <candidate_sha>` against
+the brief's criteria, with evidence, flagging anything outside the
+brief's scope; the requirement to name that exact candidate sha in the
+verdict; the statement that the review is read-only — a reviewer that
+"fixes" what it grades smuggles unreviewed edits into the merge; the
+no-build rule from the implementer's brief — grading is reading, and a
+reviewer that runs the suite fights the serial validation (step 8) for
+caches and locks; and the output contract — write the verdict to a file
+in the round directory and reply with only the path, since pane
+scrollback truncates long replies (step 6).
 
 Reviewers are fleet agents: the same watch loop, wait block, states,
 and traps apply, and a settled reviewer means a verdict file to read.
@@ -305,75 +313,117 @@ You adjudicate. With the verdicts in hand, decide accept, send back, or
 drop — that call needs round-level context (merge order, review budgets,
 how the packages interact) that only you hold. Send findings back to the
 implementing agent as a numbered review prompt and wait for the fix;
-long feedback is a file-drop (step 5), and the reviewer stays alive to
-re-grade it. Budget 2 review rounds per package, then either accept
-with documented caveats or drop the package from the round and say why,
-stating what the round now lacks. When a package concludes, shut its
-reviewer down (the drill in step 9) — it holds a seat like any
-implementer. A dropped package's worktree and branch stay in place for
-the user to inspect — its work exists nowhere else — but its agents,
-implementer and reviewer alike, get shut down at the moment of the
-drop, not held for step 9's green-suite gate.
+long feedback is a file-drop (step 5). Every fix invalidates the prior
+candidate sha: repeat the clean-tree plumbing, record the new candidate
+sha, and have the reviewer grade that exact commit. Budget 2 review
+rounds per package, including re-grades caused by validation fixes. If a
+rejected package exhausts that budget, drop it or ask the user to extend
+the budget; never accept a rejected or stale commit. On acceptance,
+record the verdict's exact commit as the package's `accepted_sha`.
+
+After any drop, present the reduced package set and what it no longer
+delivers, then get confirmation before merging the remaining packages
+(unless the user already authorized unattended continuation after drops).
+A dropped package's worktree and branch stay in place for the user to
+inspect — its work exists nowhere else — but its agents, implementer and
+reviewer alike, get shut down at the moment of the drop, not held for
+step 9's green-suite gate. An accepted package's implementer and reviewer
+may be shut down after its quick checks pass; step 9 dispatches dedicated
+agents if merge-target work is needed.
 
 ## 8. Validate serially
 
 Only after a package passes review, validate it **in its worktree, one
-worktree at a time** — exactly one heavy build runs at any moment. Run
-only the package's own quick checks (it compiles, its own tests pass) —
-the repo's full suite runs once on the merge target (step 9), where
-cross-package failures actually show up. On failure, send the owning
-agent the verbatim failing output (not your paraphrase) and re-validate
-after the fix; long output is a file-drop (step 5). Grade the fix
-before re-validating: a mechanical one (a missed import, a brittle
-assertion) goes straight back to the build, but a fix that reworks
-logic goes through the still-alive reviewer first — no substantial
-diff reaches the merge ungraded.
+worktree at a time** — exactly one heavy build runs at any moment. Before
+and after the checks, require `git status --porcelain` to be empty and
+both `git rev-parse HEAD` and `git rev-parse feat/<slug>` to equal the
+package's `accepted_sha`; this binds the tested tree to the reviewed
+commit that will be merged. Run only the package's own quick checks (it
+compiles, its own tests pass) — the repo's full suite runs once on the
+merge target (step 9), where cross-package failures actually show up.
+On failure, send the owning agent the verbatim failing output (not your
+paraphrase); long output is a file-drop (step 5). Any retained fix,
+mechanical or otherwise, invalidates `accepted_sha`: require a clean
+commit, repeat step 7 review for the new candidate, then re-run the quick
+checks. No changed tree reaches the merge without a matching verdict.
 
 ## 9. Merge the round locally
 
 The round ends on a local branch — nothing gets pushed; publishing (push,
 PR, merging into the default branch) stays with the user. Once every
-package has passed review and its quick checks:
+non-dropped package has passed review and its quick checks, merge only
+those packages. If none remain, skip this step and report the dropped
+worktrees and branches.
 
 1. Re-check the main repo: the tree still clean (`git status`) and HEAD
    still on the branch recorded in step 2 (`git rev-parse --abbrev-ref
    HEAD`) — hours may have passed, and uncommitted edits or a mid-round
    branch switch would ride into the merges; surface a mismatch instead
-   of working around it. (A recorded branch that merely moved past the
-   base sha still merges — report it.) Then check out the merge target:
+   of working around it. If the recorded branch itself is the merge
+   target, require `git merge-base --is-ancestor <base-sha> HEAD`; a
+   failure means the branch was reset or rewritten, so stop instead of
+   merging packages based on stale history. A branch that moved forward
+   while retaining the base may still merge — report it. Then check out
+   the merge target:
    if step 2 chose a fresh target, create it now with
    `git switch -c feat/<round-slug> <base-sha>` — an "already exists"
    refusal means the step-2 collision check was dodged, so stop and
    surface it. Otherwise stay on the recorded branch.
-2. Merge the package branches into it in the agreed order, one at a time:
-   `git merge --no-ff feat/<slug>`. A clean merge is bookkeeping and
-   yours to run; a conflicted merge is implementation and belongs to the
-   agent owning the incoming package — brief it (file-drop) to resolve
-   and commit the merge, and put the main repo's absolute path (step 2)
-   in the brief: the conflict lives in that checkout's index
-   (`MERGE_HEAD`), not in the agent's own worktree, and an agent left
-   pointed at its worktree will report a clean tree or "resolve" the
-   wrong repo. Start the next merge only after the previous one is
-   committed.
+2. Merge the accepted package branches in the agreed order, one at a
+   time. Immediately before each merge, require the package worktree to
+   be clean and `git rev-parse feat/<slug>` to equal its `accepted_sha`,
+   record `pre_merge_sha=$(git rev-parse HEAD)`, then run
+   `git merge --no-ff feat/<slug>`. A clean merge is bookkeeping and yours
+   to run. A conflicted merge is implementation in the main checkout, not
+   the package worktree. Split a new pane rooted there and start a
+   dedicated fixer:
+
+   ```bash
+   herdr pane split --current --cwd <main-repo-path> --no-focus
+   herdr agent start <slug>-merge --kind <kind> --pane <new-pane-id>
+   ```
+
+   Brief that fixer by file-drop to resolve and commit the merge. Do not
+   reuse the worktree-rooted implementer: a path written in a brief does
+   not change a live agent's cwd, and the conflict index (`MERGE_HEAD`)
+   exists only in the main checkout. Exactly one fixer may write the main
+   checkout at a time. Once the fixer settles, require a clean committed
+   merge, record `candidate_sha=$(git rev-parse HEAD)`, and dispatch
+   `<slug>-merge-review` in another main-checkout pane to grade
+   `git diff <pre_merge_sha> <candidate_sha>` read-only, concentrating on
+   the conflict resolution and combined behavior. Accept only a verdict
+   naming that candidate sha, then shut both merge agents down. Start the
+   next merge only after this review passes.
 3. Run the repo's full build and test suite on the merge target — the
    round's heavy build, and the first time the packages meet, so
-   cross-package failures land here. Send each failure verbatim to the
-   agent whose package owns it and have it fix on the merge target;
-   re-run until green.
+   cross-package failures land here. On failure, record
+   `pre_fix_sha=$(git rev-parse HEAD)` and send the verbatim output by
+   file-drop to one
+   dedicated fixer rooted in the main checkout (create it as in step 2
+   if needed). Once it settles, require a clean tree and a new commit,
+   record `candidate_sha=$(git rev-parse HEAD)`, then dispatch
+   `<slug>-merge-review` in another main-checkout pane to grade the exact
+   `git diff <pre_fix_sha> <candidate_sha>` read-only.
+   Accept only a verdict naming that candidate sha, shut both agents down,
+   and re-run the suite. Handle one fixer/reviewer pair at a time until
+   the suite passes and `git status --porcelain` is empty.
 
 Throughout, the main checkout changes hands whole: exactly one agent
 works in it at a time, and while one does, run no git there yourself —
 the no-shared-checkout rule from the intro, applied to you.
 
-**Then shut each finished agent down promptly** — once the merged suite
-is green. An agent left running after its package is done keeps a live
+**Then shut each finished agent down promptly** — once it is no longer
+needed. An agent left running after its package is done keeps a live
 session holding your repo context and credentials, keeps occupying a
 subscription seat, and will act on any stray input that reaches its pane.
-Ask it to quit with its own exit command
-(`/exit`, `/quit`, or ctrl+c / ctrl+d via `herdr agent send-keys`), then
-confirm the name is gone from `herdr agent list` and the pane is back at a
-shell prompt. Everything the round produced now lives on the merge
-target; anything needed after cleanup is a fresh agent's job there.
+Submit the agent's literal exit command with Enter through its pane, for
+example `herdr pane run <pane-id> /quit` for Grok or
+`herdr pane run <pane-id> /exit` for agents that use `/exit`; use
+`herdr agent send-keys <name> ctrl+c` only as an interrupt fallback after
+reading the screen. Confirm the name is gone from `herdr agent list` and
+the pane is back at a shell prompt. Everything the round produced now
+lives on the merge target; anything needed after cleanup is a fresh
+agent's job there.
 
 ## 10. Clean up and report
 
@@ -382,9 +432,13 @@ every worktree, branch, and pane in place as recovery context for the
 fix, and bring the failing output to the user. Once green:
 
 1. Remove each merged package's worktree:
-   `herdr worktree remove --workspace <id> --force`. A dropped package's
-   worktree — its commits exist nowhere else — never gets
-   force-removed; surface it instead.
+   first require `git status --porcelain` to be empty, the branch tip to
+   equal its recorded `accepted_sha`, and
+   `git merge-base --is-ancestor <accepted_sha> <merge-target>` to pass;
+   then run `herdr worktree remove --workspace <id> --force`. A dirty or
+   unmerged worktree stays in place for inspection. A dropped package's
+   worktree — its commits exist nowhere else — never gets force-removed;
+   surface it instead.
 2. Delete the merged package branches — worktrees first, branches
    second: git refuses to delete a branch that is still checked out in
    a worktree. Every merged tip is reachable from the target, so
@@ -401,7 +455,8 @@ fix, and bring the failing output to the user. Once green:
    left over. What happens to the target branch next is the user's call.
 
 Round invariants: implementation — conflict resolution included — belongs
-to the agents and diff-grading to the reviewers; exactly one heavy build
-runs at a time; the round ends on a local branch and publishing stays
-with the user; a worktree holding unmerged work stays in place; a
-finished agent gets shut down.
+to the agents and diff-grading to the reviewers; validation and merge use
+the exact clean commit named by the verdict; exactly one heavy build runs
+at a time; the round ends on a local branch and publishing stays with the
+user; a worktree holding dirty or unmerged work stays in place; a finished
+agent gets shut down.
