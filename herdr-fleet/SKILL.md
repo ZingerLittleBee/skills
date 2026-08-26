@@ -102,8 +102,8 @@ step 2): it keeps packages from drifting apart if the branch moves
 mid-round, and every later verification diffs against it.
 
 Record the workspace id, root pane id, and worktree path from the
-JSON — the reviewers (step 7) and validation (step 8) both need the
-path. Then make the worktree actually buildable before starting an
+JSON — the reviewers (step 7) and the quick checks (step 8) both need
+the path. Then make the worktree actually buildable before starting an
 agent in it:
 
 - **Binary artifacts don't follow.** Git worktrees share history, not
@@ -213,8 +213,8 @@ verified against a live fleet:
   wait` never fires on.
 
 Keep a per-package status board — agent state, last state change,
-`candidate_sha`, `accepted_sha`, review rounds used, validation state,
-next action — and update it on every wake. When an agent changes state,
+`candidate_sha`, `accepted_sha`, correction cycles used, quick-check
+state, next action — and update it on every wake. When an agent changes state,
 read its recent output before deciding anything:
 
 ```bash
@@ -223,12 +223,12 @@ herdr agent read <name> --source recent-unwrapped --lines 120
 
 Priorities inside the loop: answer `blocked` agents first (each is
 stalled wall-clock), then act on settled ones — a settled implementer
-gets a reviewer dispatched, a settled reviewer gets its verdict read
-(step 7) — then check long-`working` ones — an agent whose output
+gets its candidate recorded, quick checks queued, and a reviewer
+dispatched, a settled reviewer gets its verdict read (step 7) — then check long-`working` ones — an agent whose output
 hasn't changed across several sweeps may be stuck on an unrecognized
 prompt or spinning; read the pane and decide.
 Surface progress to the user at transitions that matter (package settled,
-review sent, validation passed, merge landed), not on every wake.
+review sent, quick checks passed, merge landed), not on every wake.
 
 Known traps and how to handle them:
 
@@ -264,11 +264,24 @@ is cheap metadata, not source. `git log <base-sha>..HEAD` in the worktree is
 the complete set of commits the package produced — taken from git, never
 from the agent's summary. Require `git status --porcelain` to be empty,
 then record `candidate_sha=$(git rev-parse HEAD)`. Uncommitted leftovers
-mean the brief was not followed and cannot enter review or validation.
+mean the brief was not followed and cannot enter either gate.
 An empty range means the package produced nothing: re-brief or drop it —
 an empty branch has nothing to merge and never reaches step 9.
 
-Then hand the diff to a **reviewer agent** — a fleet agent of its own,
+A candidate is **qualified** by two gates, both bound to that exact
+`candidate_sha`: the review gate (this step) and the quick-check gate
+(step 8). Run them concurrently — reviews run no builds and grade the
+diff from git objects, so neither disturbs the other — and queue the
+quick checks the moment the sha is recorded. (If the project's build
+mutates tracked files, let the quick checks finish before dispatching
+the reviewer.) While either gate is still running, hold your feedback:
+collect both gates' results and send one combined fix brief, so a
+build failure and review findings cost one fix cycle, not two. Accept
+only when both gates pass the same clean sha, and record it then as
+`accepted_sha`. Any retained code change, whatever its cause, is a new
+candidate and re-enters both gates.
+
+Hand the diff to a **reviewer agent** — a fleet agent of its own,
 in its own pane — and do not read it yourself, and do not review in
 your own window. Package diffs pulled into the orchestrator are exactly
 the source this architecture keeps out: by the fourth package your
@@ -290,10 +303,15 @@ path, the worktree path, the base sha, and the recorded `candidate_sha`;
 the instruction to grade `git diff <base-sha> <candidate_sha>` against
 the brief's criteria, with evidence, flagging anything outside the
 brief's scope; the requirement to name that exact candidate sha in the
-verdict; the statement that the review is read-only — a reviewer that
+verdict; the requirement to label every finding **blocking** (fails an
+acceptance criterion, breaks correctness or security, or endangers the
+merge) or **non-blocking** (everything else) — a rejecting verdict
+needs at least one blocking finding, and non-blocking findings alone
+never fail the gate; the
+statement that the review is read-only — a reviewer that
 "fixes" what it grades smuggles unreviewed edits into the merge; the
 no-build rule from the implementer's brief — grading is reading, and a
-reviewer that runs the suite fights the serial validation (step 8) for
+reviewer that runs the suite fights the serial quick checks (step 8) for
 caches and locks; and the output contract — write the verdict to a file
 in the round directory and reply with only the path, since pane
 scrollback truncates long replies (step 6).
@@ -303,23 +321,45 @@ and traps apply, and a settled reviewer means a verdict file to read.
 Reviews run no builds, so any number of reviewers can work while
 implementers are still working — the one-heavy-build rule is untouched.
 
-Reviewer kind: one tier below the implementer's by default — strong
-enough to genuinely parse the diff, cheap enough to run every round.
-Escalate to your strongest kind for the packages you graded hardest: a
-reviewer much weaker than the code it grades rubber-stamps what it
-cannot parse. Never use the cheapest kind for code review.
+Reviewer kind: pick it from the review's own difficulty and risk, not
+as a fixed discount off the implementer's. Foundational, concurrent,
+security-sensitive, or data-model packages get a reviewer at least as
+strong as their implementer — your strongest kind for the packages you
+graded hardest — because a reviewer much weaker than the code it
+grades rubber-stamps what it cannot parse. A lower tier fits only
+mechanical, well-bounded diffs with explicit acceptance criteria.
+Never use the cheapest kind for code review.
 
-You adjudicate. With the verdicts in hand, decide accept, send back, or
-drop — that call needs round-level context (merge order, review budgets,
-how the packages interact) that only you hold. Send findings back to the
-implementing agent as a numbered review prompt and wait for the fix;
-long feedback is a file-drop (step 5). Every fix invalidates the prior
-candidate sha: repeat the clean-tree plumbing, record the new candidate
-sha, and have the reviewer grade that exact commit. Budget 2 review
-rounds per package, including re-grades caused by validation fixes. If a
-rejected package exhausts that budget, drop it or ask the user to extend
-the budget; never accept a rejected or stale commit. On acceptance,
-record the verdict's exact commit as the package's `accepted_sha`.
+You adjudicate. With both gates' results in hand, decide accept, send
+back, or drop — that call needs round-level context (merge order,
+budgets, how the packages interact) that only you hold. Send the
+blocking findings back to the implementing agent as a numbered review
+prompt, bundling in any non-blocking ones worth fixing, and wait for
+the fix; long feedback is a file-drop (step 5). A blocking finding is
+cleared by a fix or by a reviewer verdict — reclassifying it yourself
+is how a round quietly ships a rejected package. When a re-grade
+surfaces a likely-blocking issue that sat unchanged in the prior
+candidate, hand that one finding to a second reviewer of equal or
+stronger kind for a focused adjudication.
+
+Every fix invalidates the prior candidate sha: repeat the clean-tree
+plumbing, record the new one, and run both gates again — the quick
+checks in full, the review as a **re-grade**. Give the reviewer the
+prior verdict's path plus the previous and new candidate shas; it
+confirms each numbered blocking finding is resolved, reviews
+`git diff <prev-candidate> <new-candidate>` for regressions and scope
+creep — reading surrounding code where the delta's semantic effects
+demand it — and issues a verdict naming the new sha for the complete
+candidate. Fall back to a full `base..candidate` grade when history
+was rewritten, the fix broadened scope, or the prior verdict cannot be
+established.
+
+Budget 2 **correction cycles** per package, counted monotonically: the
+initial review is free, and each rejecting verdict — one with blocking
+findings — that opens a send-back increments the counter. Quick-check
+repairs and non-blocking cleanups re-enter the gates but cost no
+cycle. A third rejecting verdict drops the package or goes to the user
+to extend the budget; never accept a rejected or stale commit.
 
 After any drop, present the reduced package set and what it no longer
 delivers, then get confirmation before merging the remaining packages
@@ -328,27 +368,32 @@ Closing agent sessions is a package completion criterion. A dropped
 package's worktree and branch stay in place for the user to inspect — its
 work exists nowhere else — but its implementer and reviewer sessions close
 at the moment of the drop. An accepted package's implementer and reviewer
-sessions close immediately after its quick checks pass. Do not mark the
+sessions close immediately once both gates have passed and
+`accepted_sha` is recorded. Do not mark the
 package concluded until both names are gone from `herdr agent list` and
 their panes are back at shell prompts, using the shutdown procedure in
 step 9. Merge-target work uses dedicated agents instead of keeping package
 sessions alive.
 
-## 8. Validate serially
+## 8. Quick-check serially
 
-Only after a package passes review, validate it **in its worktree, one
-worktree at a time** — exactly one heavy build runs at any moment. Before
-and after the checks, require `git status --porcelain` to be empty and
-both `git rev-parse HEAD` and `git rev-parse feat/<slug>` to equal the
-package's `accepted_sha`; this binds the tested tree to the reviewed
-commit that will be merged. Run only the package's own quick checks (it
-compiles, its own tests pass) — the repo's full suite runs once on the
-merge target (step 9), where cross-package failures actually show up.
-On failure, send the owning agent the verbatim failing output (not your
-paraphrase); long output is a file-drop (step 5). Any retained fix,
-mechanical or otherwise, invalidates `accepted_sha`: require a clean
-commit, repeat step 7 review for the new candidate, then re-run the quick
-checks. No changed tree reaches the merge without a matching verdict.
+The quick-check gate waits for no verdict: queue it the moment a
+candidate sha is recorded, **in the package's worktree, one worktree
+at a time** — exactly one heavy build runs at any moment, which is the
+whole reason implementers don't build (step 5). Before and after the
+checks, require `git status --porcelain` to be empty and both
+`git rev-parse HEAD` and `git rev-parse feat/<slug>` to equal the
+recorded `candidate_sha`; this binds the tested tree to the same
+commit the reviewer grades. Run only the package's own quick checks
+(it compiles, its own tests pass) — the repo's full suite runs once on
+the merge target (step 9), where cross-package failures actually show
+up. A transient infrastructure failure (network, a cache lock) is a
+retry on the same candidate, not a new one. A genuine failure's
+verbatim output (not your paraphrase) goes into the combined fix brief
+of step 7; long output is a file-drop (step 5), and any retained fix,
+mechanical or otherwise, is a new candidate for both gates. No changed
+tree reaches the merge without a matching verdict and a green quick
+check on its exact sha.
 
 ## 9. Merge the round locally
 
@@ -454,12 +499,14 @@ fix, and bring the failing output to the user. Once green:
    keeps an unset `TMPDIR` from aiming the delete at `/`. It names repo
    internals and has served its purpose.
 4. Final report: the merge target branch, then per package — branch,
-   review rounds used, validation evidence — plus anything dropped or
-   left over. What happens to the target branch next is the user's call.
+   correction cycles used, quick-check evidence — plus anything dropped
+   or left over. What happens to the target branch next is the user's call.
 
 Round invariants: implementation — conflict resolution included — belongs
-to the agents and diff-grading to the reviewers; validation and merge use
-the exact clean commit named by the verdict; exactly one heavy build runs
-at a time; the round ends on a local branch and publishing stays with the
+to the agents and diff-grading to the reviewers; review, quick checks,
+and merge bind to the same exact clean commit; a blocking finding is
+cleared by a fix or a reviewer verdict, never by orchestrator
+reclassification, and correction counters only go up; exactly one heavy
+build runs at a time; the round ends on a local branch and publishing stays with the
 user; a worktree holding dirty or unmerged work stays in place; a finished
 agent session closes before its package or merge task is considered done.
