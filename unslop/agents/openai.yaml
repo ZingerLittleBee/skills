@@ -1,0 +1,7 @@
+interface:
+  display_name: "Unslop bilingual writing"
+  short_description: "Remove AI patterns from English or Chinese prose"
+  default_prompt: "Use $unslop to humanize this English or Chinese text without changing its meaning or facts."
+
+policy:
+  allow_implicit_invocation: true

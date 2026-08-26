@@ -24,6 +24,7 @@ Add `-g` to install globally (user-level) and `-y` to skip confirmation prompts.
 | [`implement-codex`](implement-codex/) | Implement a PRD or set of issues by delegating the coding to Codex (`gpt-5.6-sol`, xhigh reasoning): Claude briefs, verifies, reviews, and commits. Invoke with `/implement-codex`. |
 | [`testloop`](testloop/) | Run a host-agnostic GUI test-fix loop through Herdr with a `gpt-5.6-terra` Codex tester: the current agent builds, installs, launches, judges, and fixes, while Codex drives the app via computer use. Requires a Herdr-managed pane. Invoke it explicitly with the host's skill syntax; an optional scope can narrow the run. |
 | [`ui-research`](ui-research/) | Research how excellent products design and implement a piece of UI (visual references, motion, implementation, principles) and present an evidence-backed local HTML report with screenshots; greps the current repo before recommending anything. Triggers automatically on UI-research-shaped requests. |
+| [`unslop`](unslop/) | Humanize English or Chinese prose when explicitly requested. Removes formulaic AI writing patterns while preserving facts, intent, technical language, quotations, and regional Chinese usage. |
 | [`writing-x-zh-briefs`](writing-x-zh-briefs/) | Turn English X posts, AI news, product updates, or thin source material into concise Simplified Chinese X posts, quote-post takes, or one-to-two sentence commentary. |
 
 ### Examples
@@ -35,6 +36,7 @@ npx skills add ZingerLittleBee/skills@implement-codex
 npx skills add ZingerLittleBee/skills@publish-release
 npx skills add ZingerLittleBee/skills@testloop
 npx skills add ZingerLittleBee/skills@ui-research
+npx skills add ZingerLittleBee/skills@unslop
 npx skills add ZingerLittleBee/skills@writing-x-zh-briefs
 ```
 
