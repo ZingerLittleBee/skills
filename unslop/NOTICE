@@ -1,0 +1,6 @@
+This skill adapts the English guidance from the pstack unslop skill:
+https://github.com/cursor/plugins/tree/main/pstack/skills/unslop
+
+The adapted English guidance is used under the MIT License and retains the
+original copyright notice in LICENSE. The Chinese guidance, boundaries, and
+language-routing additions are original to this repository.

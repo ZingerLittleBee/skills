@@ -14,7 +14,7 @@ Remove formulaic AI writing patterns while preserving the author's meaning and v
 3. Do not invent facts, opinions, emotions, anecdotes, certainty, or source claims. Add personality only by sharpening wording already supported by the source.
 4. Treat pattern lists as diagnostic signals, not banned-word lists. Keep wording that is precise, idiomatic, or required by the domain.
 
-Preserve the requested language, Chinese script and regional terminology. Preserve the source's intent, factual claims, confidence, point of view, and required format.
+Preserve the requested language, the Chinese script variant (Simplified or Traditional), and regional terminology. Preserve the source's intent, factual claims, confidence, point of view, and required format.
 
 ## Workflow
 
