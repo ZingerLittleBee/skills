@@ -70,8 +70,8 @@ server-global and branches already live in the repo: check
 collisions now — the round-slug branch included — and pick a different
 slug rather than debug ambiguous targets mid-round. Also refuse a
 round-slug whose `"${TMPDIR:?}/herdr-fleet-<round-slug>"` already
-exists: a leftover from an interrupted round is not this
-invocation's; surface it instead of adopting it.
+exists: that leftover is an interrupted round's ledger — recover it
+in step 10 rather than adopting it; pick a new slug if it remains.
 
 Now fix the round's **base** and **merge target** from the main repo's
 current branch:
@@ -117,24 +117,26 @@ Persist an append-only JSONL manifest at
 `<round-dir>/manifest.jsonl`. The round directory is the ledger's
 home, so it cannot be preceded by its own `intent`. Resolve
 `"${TMPDIR:?}/herdr-fleet-<round-slug>"` to an absolute path — the
-`:?` fails closed if `TMPDIR` is unset. If that path already
-exists, stop and surface it; do not `mkdir -p` and do not adopt
-it. Then `mkdir` (not `mkdir -p`) so a race still fails, and
-immediately append `created` for the round directory (`kind`
-`dir`, `role` `round-dir`, `cleanup_policy` `delete-on-success`)
-with that resolved absolute path in `selector` and `observed`
-before doing anything else — step 5 reuses this directory. Mint a
-`round_id` unique to this invocation; ownership is proved by
-`round_id`, not by round-slug or label. `seq` increases
-monotonically so an auditor can detect a truncated or misordered
-append.
+`:?` fails closed if `TMPDIR` is unset. If that path already exists,
+recover it in step 10; do not `mkdir -p` and do not adopt it. Only
+once the path does not exist, `mkdir` (not `mkdir -p`) so a race
+still fails, and immediately append `created` for the round
+directory (`kind` `dir`, `role` `round-dir`, `cleanup_policy`
+`delete-on-success`) with that resolved absolute path in `selector`
+and `observed` before doing anything else — step 5 reuses this
+recorded path, never a second `$TMPDIR` resolve. Mint a `round_id`
+unique to this invocation; ownership is proved by `round_id`, not
+by round-slug or label. `seq` increases monotonically so an auditor
+can detect a truncated or misordered append.
 
 A mutable row cannot be write-ahead, so this is an event log: write an
 `intent` event and flush it before each create command; append a
 `created` event immediately after a successful response, before doing
 anything else; append a `state` event on disposition. Never rewrite an
-earlier line. Every later resource follows that write-ahead; only the
-round directory is created first so the ledger can exist.
+earlier line. Every later resource follows that write-ahead, including
+every agent, pane, tab, branch, container root pane, and worktree
+parent directory; only the round directory is created first so the
+ledger can exist, and an unrecorded resource cannot be reclaimed.
 
 Record envelope:
 
@@ -147,7 +149,7 @@ Record envelope:
   "event": "intent | created | state",
   "resource_key": "package/<slug>/worktree",
   "kind": "worktree | tab | pane | agent | branch | dir",
-  "role": "package-container | package-reviewer | merge-container | merge-fixer | merge-reviewer | package-branch | round-dir | merge-target",
+  "role": "package-container | package-implementer | package-reviewer | merge-container | merge-fixer | merge-reviewer | package-branch | round-dir | merge-target | worktree-parent-directory | container-root-pane",
   "parent_key": "<logical parent resource_key or null>",
   "cleanup_policy": "remove-when-merged | close-aux | close-container | retain-if-unmerged | delete-on-success | report-only",
   "selector": {},
@@ -168,9 +170,12 @@ used to find the resource again if a create response is lost.
 
 Before each `herdr worktree create`, append `intent` for the worktree
 (`package/<slug>/worktree`, `kind` `worktree`, `role`
-`package-container`, `cleanup_policy` `remove-when-merged`) and its
+`package-container`, `cleanup_policy` `remove-when-merged`), its
 branch (`package/<slug>/branch`, `kind` `branch`, `role`
-`package-branch`).
+`package-branch`), its container root pane (`role`
+`container-root-pane`, `cleanup_policy` `close-container`), and
+the worktree parent directory (`kind` `dir`, `role`
+`worktree-parent-directory`, `cleanup_policy` `delete-on-success`).
 
 ```bash
 herdr worktree create --cwd <main-repo-path> --branch feat/<slug> --base <sha> --label <slug> --no-focus
@@ -180,10 +185,11 @@ Pin every package to the same `--base` commit (the round's base sha from
 step 2): it keeps packages from drifting apart if the branch moves
 mid-round, and every later verification diffs against it.
 
-Record the workspace id, root pane id, and worktree path from the
-JSON onto that worktree's `created` `observed` — the reviewers
-(step 7) and the quick checks (step 8) both need the path. Then make
-the worktree actually buildable before starting an agent in it:
+Append `created` for all four from the JSON (workspace id, root pane
+id, and path on the worktree and container-root-pane; branch ref;
+parent path). Reviewers (step 7) and quick checks (step 8) need the
+worktree path. Then make the worktree actually buildable before
+starting an agent in it:
 
 - **Binary artifacts don't follow.** Git worktrees share history, not
   ignored build artifacts. If the build depends on a large local artifact
@@ -203,6 +209,8 @@ package. Foundational or architecturally risky packages get the strongest
 agent — a weak foundation costs every reviewer and every later round.
 Mechanical, well-bounded packages (apply an established pattern, styling
 sweeps, copy changes) go to the cheaper kinds. When unsure, assign up.
+Write-ahead the implementer (`kind` `agent`, `role`
+`package-implementer`) and append `created` after a successful start:
 
 ```bash
 herdr agent start <slug> --kind <kind> --pane <root-pane-id>
@@ -211,15 +219,13 @@ herdr agent start <slug> --kind <kind> --pane <root-pane-id>
 ## 5. Brief each agent
 
 A real brief is too long to push through a terminal. Write it as a
-Markdown file, one per package, in the round's temp directory: resolve
-`$TMPDIR/herdr-fleet-<round-slug>` to an absolute path once, `mkdir -p`
-it, and reuse the resolved path all round, prompts included (the
-round-slug directory keeps two rounds on one machine out of each
-other's briefs; one brief per package at `<dir>/<slug>.md`). Make the
-prompt a one-liner pointing at it:
+Markdown file, one per package, in the round directory recorded on
+the round-dir `created` event in step 3 — that absolute path, not a
+fresh `$TMPDIR` resolve, and do not `mkdir` it again. One brief per
+package at `<recorded-round-dir>/<slug>.md`; prompt with a one-liner:
 
 ```bash
-herdr agent prompt <slug> "Read $TMPDIR/herdr-fleet-<round-slug>/<slug>.md and complete the package it describes."
+herdr agent prompt <slug> "Read <recorded-round-dir>/<slug>.md and complete the package it describes."
 ```
 
 Long text sent through `agent prompt` risks wrapping and paste-mode
@@ -367,8 +373,9 @@ the source this architecture keeps out: by the fourth package your
 judgment is swimming in the first three's implementation noise, and
 having briefed the round you also want it to succeed — a reviewer that
 wrote none of it grades without that bias. Split a review pane off the
-package's root pane (append it to the round manifest, step 3), read
-the new pane id from the JSON, and start the reviewer in it:
+package's root pane, write-ahead the pane and the reviewer agent
+(`role` `package-reviewer`, `kind` `pane` / `agent`, `cleanup_policy`
+`close-aux`), read the new pane id from the JSON, and start it:
 
 ```bash
 herdr pane split <root-pane-id> --cwd <worktree-path> --no-focus
@@ -446,19 +453,12 @@ delivers, then get confirmation before merging the remaining packages
 Closing agent sessions is a package completion criterion. A dropped
 package's worktree and branch stay in place for the user to inspect — its
 work exists nowhere else — but its implementer and reviewer sessions close
-at the moment of the drop. An accepted package's implementer and reviewer
-sessions close immediately once both gates have passed and
-`accepted_sha` is recorded. Shut each agent with the exit procedure in
-step 9, then close the reviewer pane with `herdr pane close <pane-id>`
-once its four preconditions hold (agent gone, verdict persisted, idle
-shell via `herdr pane process-info`, recorded root pane id still live
-in the workspace). Never close the package root pane: it is the
-workspace's last pane after the reviewer closes, and closing it would
-collapse the workspace that `herdr worktree remove --workspace <id>`
-needs as its only handle. Do not mark the package concluded until both
-names are gone from `herdr agent list` and the reviewer pane is closed.
-Merge-target work uses dedicated agents instead of keeping package
-sessions alive.
+at the drop. An accepted package's sessions close immediately once both
+gates have passed and `accepted_sha` is recorded. Shut each agent and
+close the reviewer pane with the shutdown procedure in step 9; the
+package is not concluded until both names are gone from `herdr agent
+list` and the reviewer pane is closed. Merge-target work uses dedicated
+agents instead of keeping package sessions alive.
 
 ## 8. Quick-check serially
 
@@ -485,14 +485,14 @@ check on its exact sha.
 The round ends on a local branch — nothing gets pushed; publishing (push,
 PR, merging into the default branch) stays with the user. Once every
 non-dropped package has passed review and its quick checks, merge only
-those packages. If none remain, skip this step and report the dropped
-worktrees and branches.
+those packages. If none remain, skip to step 10.
 
 Create one merge tab for all merge-phase work, bound to the
 orchestrator workspace id recorded in step 2 — `--workspace` is
 required, because without it `herdr tab create` follows the globally
-active workspace and a focus change would place the tab elsewhere
-(append the tab to the round manifest, step 3):
+active workspace and a focus change would place the tab elsewhere.
+Write-ahead the tab (`kind` `tab`, `role` `merge-container`) and its
+root pane (`kind` `pane`, `role` `container-root-pane`):
 
 ```bash
 herdr tab create --workspace <orchestrator-workspace-id> --cwd <main-repo-path> --label <round-slug>-merge --no-focus
@@ -505,17 +505,18 @@ never close this tab's root pane — `herdr tab close` reclaims it.
 1. Re-check the main repo: the tree still clean (`git status`) and HEAD
    still on the branch recorded in step 2 (`git rev-parse --abbrev-ref
    HEAD`) — hours may have passed, and uncommitted edits or a mid-round
-   branch switch would ride into the merges; surface a mismatch instead
-   of working around it. If the recorded branch itself is the merge
-   target, require `git merge-base --is-ancestor <base-sha> HEAD`; a
-   failure means the branch was reset or rewritten, so stop instead of
-   merging packages based on stale history. A branch that moved forward
-   while retaining the base may still merge — report it. Then check out
-   the merge target:
-   if step 2 chose a fresh target, create it now with
+   branch switch would ride into the merges; surface a mismatch and go
+   to step 10 instead of working around it. If the recorded branch itself
+   is the merge target, require `git merge-base --is-ancestor <base-sha>
+   HEAD`; a failure means the branch was reset or rewritten, so go to
+   step 10 instead of merging packages based on stale history. A branch
+   that moved forward while retaining the base may still merge — report
+   it. Then check out the merge target: if step 2 chose a fresh target,
+   write-ahead the branch (`kind` `branch`, `role` `merge-target`,
+   `cleanup_policy` `report-only`) and create it now with
    `git switch -c feat/<round-slug> <base-sha>` — an "already exists"
-   refusal means the step-2 collision check was dodged, so stop and
-   surface it. Otherwise stay on the recorded branch.
+   refusal means the step-2 collision check was dodged, so go to
+   step 10 and surface it. Otherwise stay on the recorded branch.
 2. Merge the accepted package branches in the agreed order, one at a
    time. Immediately before each merge, require the package worktree to
    be clean and `git rev-parse feat/<slug>` to equal its `accepted_sha`,
@@ -523,8 +524,8 @@ never close this tab's root pane — `herdr tab close` reclaims it.
    `git merge --no-ff feat/<slug>`. A clean merge is bookkeeping and yours
    to run. A conflicted merge is implementation in the main checkout, not
    the package worktree. Split a fixer pane off the merge tab's root
-   pane (append it to the round manifest, step 3) and start a dedicated
-   fixer:
+   pane; write-ahead the pane and the fixer agent (`role` `merge-fixer`,
+   `kind` `pane` / `agent`, `cleanup_policy` `close-aux`):
 
    ```bash
    herdr pane split <merge-root-pane-id> --cwd <main-repo-path> --no-focus
@@ -538,37 +539,37 @@ never close this tab's root pane — `herdr tab close` reclaims it.
    checkout at a time. Once the fixer settles, require a clean committed
    merge, record `candidate_sha=$(git rev-parse HEAD)`, and dispatch
    `<slug>-merge-review` in another pane split the same way off the merge
-   tab's root to grade `git diff <pre_merge_sha> <candidate_sha>`
-   read-only, concentrating on the conflict resolution and combined
-   behavior. Accept only a verdict naming that candidate sha, then shut
-   both merge agents down and close both auxiliary panes promptly
-   (preconditions in the shutdown paragraph below) — do not defer closes
-   to the end of the step. Start the next merge only after this review
-   passes.
+   tab's root (write-ahead `role` `merge-reviewer`) to grade
+   `git diff <pre_merge_sha> <candidate_sha>` read-only, concentrating
+   on the conflict resolution and combined behavior. Accept only a
+   verdict naming that candidate sha. Start the next merge only after
+   this review passes.
 3. Run the repo's full build and test suite on the merge target — the
    round's heavy build, and the first time the packages meet, so
    cross-package failures land here. On failure, record
    `pre_fix_sha=$(git rev-parse HEAD)` and send the verbatim output by
    file-drop to one dedicated fixer rooted in the main checkout (split
-   off the merge tab's root as in step 2 if needed; append each new pane
-   to the round manifest, step 3). Once it settles, require a clean tree
-   and a new commit, record `candidate_sha=$(git rev-parse HEAD)`, then
-   dispatch `<slug>-merge-review` in another merge-tab pane to grade the
-   exact `git diff <pre_fix_sha> <candidate_sha>` read-only. Accept only
-   a verdict naming that candidate sha, shut both agents down, close both
-   auxiliary panes promptly, and re-run the suite. Handle one
-   fixer/reviewer pair at a time until the suite passes and
-   `git status --porcelain` is empty — closing each pair before the next
-   keeps panes from compounding across fix cycles.
+   and write-ahead as in item 2 if needed). Once it settles, require a
+   clean tree and a new commit, record
+   `candidate_sha=$(git rev-parse HEAD)`, then dispatch
+   `<slug>-merge-review` in another merge-tab pane (write-ahead as in
+   item 2) to grade the exact `git diff <pre_fix_sha> <candidate_sha>`
+   read-only. Accept only a verdict naming that candidate sha and
+   re-run the suite. Handle one fixer/reviewer pair at a time. If a
+   fixer is blocked on a user decision, or the failure cannot be
+   resolved this round, persist the failing output, leave the
+   merge-target red-suite fix state untouched, and go to step 10.
 
 Throughout, the main checkout changes hands whole: exactly one agent
 works in it at a time, and while one does, run no git there yourself —
 the no-shared-checkout rule from the intro, applied to you.
 
 **Then shut each finished agent down promptly** — once it is no longer
-needed. An agent left running after its package is done keeps a live
-session holding your repo context and credentials, keeps occupying a
-subscription seat, and will act on any stray input that reaches its pane.
+needed, including each merge pair before the next merge or suite
+rerun; do not defer closes to the end of the step. An agent left
+running after its package is done keeps a live session holding your
+repo context and credentials, keeps occupying a subscription seat,
+and will act on any stray input that reaches its pane.
 Submit the agent's literal exit command with Enter through its pane, for
 example `herdr pane run <pane-id> /quit` for Grok or
 `herdr pane run <pane-id> /exit` for agents that use `/exit`; use
@@ -594,38 +595,42 @@ anything needed after cleanup is a fresh agent's job there.
 
 ## 10. Clean up and report
 
-Do not wait for a green suite to reclaim a package that is already
-merged: its commits are on the merge target, and step 9.3 fixes in
-the main checkout, so that worktree is not recovery context. Save
-failing suite output first and bring it to the user; never touch the
-merge target or its red-suite fix state.
+Run this step when merge work finishes, when this round stops after
+the round directory exists, and when a later invocation finds a
+leftover round directory (steps 2–3), and consume that manifest. A
+leftover from another invocation needs the user's decision before
+anything is destroyed; this round's own abort does not. Shut
+still-live agents and auxiliary panes with the step 9 procedure
+first, then close a still-live merge tab with
+`herdr tab close <merge-tab-id>`. Do not wait for a green suite to
+reclaim a package that is already merged: its commits are on the
+merge target, and step 9.3 fixes in the main checkout, so that
+worktree is not recovery context. Save failing suite output first;
+never touch the merge target or its red-suite fix state.
 
-Reconcile from the round manifest (step 3). Automatic cleanup
-candidates are only resources with a manifest `created` event and no
-terminal `removed` disposition, intersected with currently live
-resources matched by exact recorded id, then re-verified per kind
-(identity, parent, occupant, process state, git path/ref/sha,
-cleanup policy). Never reclaim `live - manifest`. `manifest - live`
-is already-absent: reconcile and report, do not recreate or delete.
-An intent-only selector match after a lost create response is an
-audit candidate, not automatic destructive authority.
+Automatic cleanup candidates are only resources with a manifest
+`created` event and no terminal `removed` disposition, intersected
+with currently live resources matched by exact recorded id, then
+re-verified per kind (identity, parent, occupant, process state, git
+path/ref/sha, cleanup policy). Never reclaim `live - manifest`.
+`manifest - live` is already-absent: reconcile and report, do not
+recreate or delete. An intent-only selector match after a lost
+create response is an audit candidate, not automatic destructive
+authority.
 
 1. Per package, remove the worktree only when all of these hold:
    `git status --porcelain` is empty, the branch tip equals the
    recorded `accepted_sha`,
    `git merge-base --is-ancestor <accepted_sha> <merge-target>`
-   passes, the package agent is gone from `herdr agent list`, and
-   every auxiliary pane is already closed. The container root pane
-   stays — never close it explicitly;
-   `herdr worktree remove --workspace <id>` needs that workspace as
-   its only handle. Enumerate the workspace's remaining panes (the
-   recorded root pane included) and confirm via
-   `herdr pane process-info --pane <pane-id>` that each holds
-   only an idle shell — herdr shuts down the workspace's terminal
-   runtimes before a forced removal, so a vanished agent does not
-   make `--force` safe. Fail closed on any non-shell occupant,
-   user takeover, or unidentifiable state; retain and report.
-   Only then `herdr worktree remove --workspace <id> --force`. A dirty or
+   passes, the package agent is gone, and every auxiliary pane is
+   already closed. Leave the container root pane in place. Enumerate
+   the workspace's remaining panes (the recorded root pane included)
+   and confirm via `herdr pane process-info --pane <pane-id>` that
+   each holds only an idle shell — herdr shuts down the workspace's
+   terminal runtimes before a forced removal, so a vanished agent
+   does not make `--force` safe. Fail closed on any non-shell occupant,
+   user takeover, or unidentifiable state; retain and report. Only
+   then `herdr worktree remove --workspace <id> --force`. A dirty or
    unmerged worktree stays in place for inspection. A dropped
    package's worktree — its commits exist nowhere else — never gets
    force-removed; surface it instead. After a successful remove,
@@ -639,27 +644,26 @@ audit candidate, not automatic destructive authority.
    worktree` means step 1 left the worktree behind and says nothing
    about merge state, while `not fully merged` is evidence the package
    never actually merged. Either way investigate; `-D` answers neither.
-3. Account for the rest of this round's residue: the round brief
-   directory, each package branch, any merge-target branch this
-   round created, the merge tab's root pane, and worktree parent
+3. Account for the rest of this round's residue from the manifest —
+   round directory, package branches, any merge-target branch this
+   round created, the merge tab and its root pane, and worktree parent
    directories. Leave the merge target in place; it is the round's
-   output. Append a `state` event per disposition for every
-   resource except the round directory, while the manifest still
-   exists.
+   output. Append a `state` event per disposition for every resource
+   except the round directory, while the manifest still exists.
 4. Final report: the merge target branch, then per package — branch,
    correction cycles used, quick-check evidence — plus anything
    dropped. Build every item except the round directory from the
    still-live manifest as one of `removed`, `retained(<reason>)`,
-   or `cleanup_failed(<error>)`. Then delete the round directory
-   last, using only the exact absolute path recorded on its
-   `created` event: `rm -rf "${recorded_round_dir:?}"`, after
-   confirming that path still matches the recorded id and that
-   `<recorded_round_dir>/manifest.jsonl` carries this round's
-   `round_id`. Do not reconstruct the path from `$TMPDIR` and the
-   slug. The `:?` guard keeps an unset recorded path from aiming
-   the delete at `/`. It names repo internals and has served its
-   purpose. Observe that outcome and fold it into the report;
-   there is no post-delete append. What happens to the target
+   or `cleanup_failed(<error>)`. Then delete the round directory last,
+   using only the exact absolute path recorded on its `created`
+   event: `rm -rf "${recorded_round_dir:?}"`, after confirming that
+   path still matches the recorded id and that
+   `<recorded_round_dir>/manifest.jsonl` carries the `round_id` of
+   the round being reclaimed. Do not reconstruct the path from
+   `$TMPDIR` and the slug. The `:?` guard keeps an unset recorded
+   path from aiming the delete at `/`. It names repo internals and
+   has served its purpose. Observe that outcome and fold it into the
+   report; there is no post-delete append. What happens to the target
    branch next is the user's call.
 
 Round invariants: implementation — conflict resolution included — belongs
@@ -667,13 +671,9 @@ to the agents and diff-grading to the reviewers; review, quick checks,
 and merge bind to the same exact clean commit; a blocking finding is
 cleared by a fix or a reviewer verdict, never by orchestrator
 reclassification, and correction counters only go up; exactly one heavy
-build runs at a time; the round ends on a local branch and publishing stays with the
-user; a worktree holding dirty or unmerged work stays in place; a finished
-agent session closes before its package or merge task is considered done;
-a container root pane is never closed explicitly — auxiliary panes close
-as soon as their agent is gone and their output is persisted, and
-containers reclaim the rest; every resource except the round directory
-is written to the manifest before it is created — the round directory
-is the ledger's home, so it is created first and recorded as `created`
-immediately after; only manifest-confirmed resources are ever
-reclaimed.
+build runs at a time; the round ends on a local branch and publishing
+stays with the user; a worktree holding dirty or unmerged work stays
+in place; a finished agent session closes before its package or merge
+task is considered done; a container root pane is never closed
+explicitly (step 9); resources except the round directory are
+write-ahead (step 3) and only manifest-confirmed ones are reclaimed.
