@@ -3,7 +3,7 @@
 Personal collection of [agent skills](https://skills.sh/) for Claude Code and the
 open agent-skills ecosystem. Each top-level directory is one skill, except
 [`agent-profile/`](agent-profile/) which holds the shared agent profile and
-[`goals/`](goals/) which holds reusable Codex goals (see below).
+[`goals/`](goals/) which holds reference-only Codex goal drafts (see below).
 
 ## Install
 
@@ -52,5 +52,7 @@ run that script; see [`agent-profile/README.md`](agent-profile/README.md) for de
 
 ## Goals
 
-[`goals/`](goals/) contains reusable goals for long-running Codex work. Each goal
-has a cross-project invocation in [`goals/README.md`](goals/README.md).
+[`goals/`](goals/) is a reference library for long-running Codex goal drafts. It
+is not installed, loaded automatically, or exposed as a quick invocation. Open a
+goal and copy its contents manually when needed; see
+[`goals/README.md`](goals/README.md).

@@ -1,6 +1,7 @@
-# Personal Goals
+# Personal Goal Drafts
 
-Reusable goals for long-running Codex work.
+Reference-only goal drafts for long-running Codex work. These files are not
+Skills, commands, or automatically loaded templates.
 
 ## Available goals
 
@@ -10,31 +11,16 @@ Reusable goals for long-running Codex work.
 
 ## Usage
 
-Run a goal from the target project. Because this is a private repository, each
-command explicitly tells Codex to load the goal through an authenticated GitHub
-CLI session. A relative path works only when the goal file is already present in
-the current workspace, while `/goal` is not documented as a URL-template loader.
+1. Open the goal document you want to use.
+2. Copy its complete contents into the target project's chat.
+3. Ask Codex to create a goal from the pasted specification and start working.
 
-These commands require `gh auth status` to succeed and the corresponding files
-to be available on the remote `main` branch.
-
-### Electron accessibility and automation
+For example, after pasting the document:
 
 ```text
-/goal Load the goal specification by running `gh api -H "Accept: application/vnd.github.raw+json" 'repos/ZingerLittleBee/skills/contents/goals/electron-accessibility-and-automation.md?ref=main'`, then execute every requirement in that document against the current project until all completion criteria are satisfied.
+Create a goal from the specification above and start working until all completion criteria are satisfied.
 ```
 
-### React Doctor perfect score
-
-```text
-/goal Load the goal specification by running `gh api -H "Accept: application/vnd.github.raw+json" 'repos/ZingerLittleBee/skills/contents/goals/react-doctor-perfect-score.md?ref=main'`, then execute every requirement in that document against the current project until all completion criteria are satisfied.
-```
-
-### Tauri accessibility and automation
-
-```text
-/goal Load the goal specification by running `gh api -H "Accept: application/vnd.github.raw+json" 'repos/ZingerLittleBee/skills/contents/goals/tauri-accessibility-and-automation.md?ref=main'`, then execute every requirement in that document against the current project until all completion criteria are satisfied.
-```
-
-When the goal file already exists inside the current workspace, use its
-workspace-relative path instead of a URL.
+If the copied objective is 4,000 characters or fewer, it can also be pasted
+directly after `/goal`. For longer drafts, provide the document as chat context
+first and then ask Codex to create the goal.
