@@ -2,7 +2,8 @@
 
 Personal collection of [agent skills](https://skills.sh/) for Claude Code and the
 open agent-skills ecosystem. Each top-level directory is one skill, except
-[`agent-profile/`](agent-profile/) which holds the shared agent profile (see below).
+[`agent-profile/`](agent-profile/) which holds the shared agent profile and
+[`goals/`](goals/) which holds reusable Codex goals (see below).
 
 ## Install
 
@@ -48,3 +49,8 @@ skill; it is version-controlled here and wired into each tool by
 [`./setup-agent-profile.sh`](setup-agent-profile.sh) (symlinks for most tools; a
 generated always-apply `.mdc` for Cursor). On a new machine, clone this repo and
 run that script; see [`agent-profile/README.md`](agent-profile/README.md) for details.
+
+## Goals
+
+[`goals/`](goals/) contains reusable goals for long-running Codex work. Each goal
+has a cross-project invocation in [`goals/README.md`](goals/README.md).
