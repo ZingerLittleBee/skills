@@ -79,6 +79,10 @@ current branch:
   round's base — every worktree gets pinned to it (step 3) — and the
   path is what worktree creation (step 3) and conflict briefs (step 9)
   reference; your shell's cwd hours from now is not a substitute.
+- Record the orchestrator workspace id from
+  `printf '%s\n' "$HERDR_WORKSPACE_ID"`. That recorded orchestrator
+  workspace id is what later binds the merge tab to this workspace
+  (step 9); the globally active workspace is not a substitute.
 - If the current branch is shared and long-lived (the default branch,
   `develop`, `release/*`), or HEAD is detached (`--abbrev-ref` prints
   the literal `HEAD`), the round must not land on it directly: the
@@ -86,12 +90,78 @@ current branch:
   the base sha at merge time (step 9). Otherwise the current branch
   itself is the merge target. Borderline cases are your judgment call.
 
+Inventory the source repo's existing worktrees — detached or prunable
+entries, a target path occupied by a different branch, checkouts whose
+herdr workspace closed while the directory remains, and prior rounds'
+disk cost:
+
+```bash
+herdr worktree list --cwd <main-repo-path>
+git -C <main-repo-path> worktree list --porcelain
+```
+
+List read-only and ask the user to decide reuse / remove / keep for
+each; never auto-clean a prior round's resources.
+
 Present the plan — packages, branch names, merge order, merge target,
-agent kind per package — as a short table and get one confirmation
-before creating anything (skip only if the user already said to run
-unattended).
+agent kind per package, and those worktree decisions — as a short table
+and get one confirmation before creating anything (skip only if the
+user already said to run unattended).
 
 ## 3. One worktree per package
+
+Persist an append-only JSONL manifest at
+`<round-dir>/manifest.jsonl`. Resolve
+`$TMPDIR/herdr-fleet-<round-slug>` to an absolute path, `mkdir -p` it,
+and write there — step 5 reuses this directory. Mint a `round_id`
+unique to this invocation; ownership is proved by `round_id`, not by
+round-slug or label. `seq` increases monotonically so an auditor can
+detect a truncated or misordered append. Write `intent` for the round
+directory (`kind` `dir`, `role` `round-dir`, `cleanup_policy`
+`delete-on-success`) before `mkdir -p`, then `created` after.
+
+A mutable row cannot be write-ahead, so this is an event log: write an
+`intent` event and flush it before each create command; append a
+`created` event immediately after a successful response, before doing
+anything else; append a `state` event on disposition. Never rewrite an
+earlier line. The same write-ahead covers every resource this round
+creates, not only the worktrees below.
+
+Record envelope:
+
+```json
+{
+  "schema_version": 1,
+  "round_id": "<unique per invocation>",
+  "round_slug": "<slug>",
+  "seq": 1,
+  "event": "intent | created | state",
+  "resource_key": "package/<slug>/worktree",
+  "kind": "worktree | tab | pane | agent | branch | dir",
+  "role": "package-container | package-reviewer | merge-container | merge-fixer | merge-reviewer | package-branch | round-dir | merge-target",
+  "parent_key": "<logical parent resource_key or null>",
+  "cleanup_policy": "remove-when-merged | close-aux | close-container | retain-if-unmerged | delete-on-success | report-only",
+  "selector": {},
+  "observed": {},
+  "status": "planned | live | removed | retained | failed",
+  "detail": "<reason or sanitized error, or null>"
+}
+```
+
+`resource_key` ties the write-ahead `intent`, the `created` event and
+later `state` events together. `parent_key` is logical, so it exists
+before the parent's herdr id is known. `cleanup_policy` is
+load-bearing: a later auditor cannot otherwise tell whether a live
+resource should be closed, removed only after reachability checks, or
+deliberately retained. `selector` is structured expected identity,
+used to find the resource again if a create response is lost.
+`observed` is empty on `intent` and carries the real ids on `created`.
+
+Before each `herdr worktree create`, append `intent` for the worktree
+(`package/<slug>/worktree`, `kind` `worktree`, `role`
+`package-container`, `cleanup_policy` `remove-when-merged`) and its
+branch (`package/<slug>/branch`, `kind` `branch`, `role`
+`package-branch`).
 
 ```bash
 herdr worktree create --cwd <main-repo-path> --branch feat/<slug> --base <sha> --label <slug> --no-focus
@@ -102,9 +172,9 @@ step 2): it keeps packages from drifting apart if the branch moves
 mid-round, and every later verification diffs against it.
 
 Record the workspace id, root pane id, and worktree path from the
-JSON — the reviewers (step 7) and the quick checks (step 8) both need
-the path. Then make the worktree actually buildable before starting an
-agent in it:
+JSON onto that worktree's `created` `observed` — the reviewers
+(step 7) and the quick checks (step 8) both need the path. Then make
+the worktree actually buildable before starting an agent in it:
 
 - **Binary artifacts don't follow.** Git worktrees share history, not
   ignored build artifacts. If the build depends on a large local artifact
@@ -475,18 +545,40 @@ agent's job there.
 
 ## 10. Clean up and report
 
-The green suite on the merge target gates the cleanup: on failure, keep
-every worktree, branch, and pane in place as recovery context for the
-fix, and bring the failing output to the user. Once green:
+Do not wait for a green suite to reclaim a package that is already
+merged: its commits are on the merge target, and step 9.3 fixes in
+the main checkout, so that worktree is not recovery context. Save
+failing suite output first and bring it to the user; never touch the
+merge target or its red-suite fix state.
 
-1. Remove each merged package's worktree:
-   first require `git status --porcelain` to be empty, the branch tip to
-   equal its recorded `accepted_sha`, and
-   `git merge-base --is-ancestor <accepted_sha> <merge-target>` to pass;
-   then run `herdr worktree remove --workspace <id> --force`. A dirty or
-   unmerged worktree stays in place for inspection. A dropped package's
-   worktree — its commits exist nowhere else — never gets force-removed;
-   surface it instead.
+Reconcile from the round manifest (step 3). Automatic cleanup
+candidates are only resources with a manifest `created` event and no
+terminal `removed` disposition, intersected with currently live
+resources matched by exact recorded id, then re-verified per kind
+(identity, parent, occupant, process state, git path/ref/sha,
+cleanup policy). Never reclaim `live - manifest`. `manifest - live`
+is already-absent: reconcile and report, do not recreate or delete.
+An intent-only selector match after a lost create response is an
+audit candidate, not automatic destructive authority.
+
+1. Per package, remove the worktree only when all of these hold:
+   `git status --porcelain` is empty, the branch tip equals the
+   recorded `accepted_sha`,
+   `git merge-base --is-ancestor <accepted_sha> <merge-target>`
+   passes, and its agent, pane, and processes are all gone. Then
+   enumerate the workspace's panes and confirm via
+   `herdr pane process-info --pane <pane-id>` that each holds
+   only an idle shell — herdr shuts down the workspace's terminal
+   runtimes before a forced removal, so a vanished agent does not
+   make `--force` safe. Fail closed on any non-shell occupant,
+   user takeover, or unidentifiable state; retain and report.
+   Only then `herdr worktree remove --workspace <id> --force`. A dirty or
+   unmerged worktree stays in place for inspection. A dropped
+   package's worktree — its commits exist nowhere else — never gets
+   force-removed; surface it instead. After a successful remove,
+   `rmdir` the exact expected empty parent directory (non-recursive)
+   and retain on failure. Do not `git worktree prune`; at most
+   `git worktree prune --dry-run --verbose` and report the findings.
 2. Delete the merged package branches — worktrees first, branches
    second: git refuses to delete a branch that is still checked out in
    a worktree. Every merged tip is reachable from the target, so
@@ -494,13 +586,21 @@ fix, and bring the failing output to the user. Once green:
    worktree` means step 1 left the worktree behind and says nothing
    about merge state, while `not fully merged` is evidence the package
    never actually merged. Either way investigate; `-D` answers neither.
-3. Delete the round's brief directory:
+3. Account for the rest of this round's residue: the round brief
+   directory, each package branch, any merge-target branch this
+   round created, the merge tab's root pane, and worktree parent
+   directories. Delete the brief directory with
    `rm -rf "${TMPDIR:?}/herdr-fleet-<round-slug>"` — the `:?` guard
-   keeps an unset `TMPDIR` from aiming the delete at `/`. It names repo
-   internals and has served its purpose.
+   keeps an unset `TMPDIR` from aiming the delete at `/`. It names
+   repo internals and has served its purpose. Leave the merge
+   target in place; it is the round's output. Append a `state`
+   event per disposition.
 4. Final report: the merge target branch, then per package — branch,
-   correction cycles used, quick-check evidence — plus anything dropped
-   or left over. What happens to the target branch next is the user's call.
+   correction cycles used, quick-check evidence — plus anything
+   dropped. Then every item from the manifest and residue inventory
+   as one of `removed`, `retained(<reason>)`, or
+   `cleanup_failed(<error>)`. What happens to the target branch next
+   is the user's call.
 
 Round invariants: implementation — conflict resolution included — belongs
 to the agents and diff-grading to the reviewers; review, quick checks,
@@ -509,4 +609,9 @@ cleared by a fix or a reviewer verdict, never by orchestrator
 reclassification, and correction counters only go up; exactly one heavy
 build runs at a time; the round ends on a local branch and publishing stays with the
 user; a worktree holding dirty or unmerged work stays in place; a finished
-agent session closes before its package or merge task is considered done.
+agent session closes before its package or merge task is considered done;
+a container root pane is never closed explicitly — auxiliary panes close
+as soon as their agent is gone and their output is persisted, and
+containers reclaim the rest; every resource the round creates is written
+to the manifest before it is created, and only manifest-confirmed
+resources are ever reclaimed.
