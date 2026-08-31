@@ -111,21 +111,23 @@ user already said to run unattended).
 ## 3. One worktree per package
 
 Persist an append-only JSONL manifest at
-`<round-dir>/manifest.jsonl`. Resolve
-`$TMPDIR/herdr-fleet-<round-slug>` to an absolute path, `mkdir -p` it,
-and write there — step 5 reuses this directory. Mint a `round_id`
-unique to this invocation; ownership is proved by `round_id`, not by
-round-slug or label. `seq` increases monotonically so an auditor can
-detect a truncated or misordered append. Write `intent` for the round
-directory (`kind` `dir`, `role` `round-dir`, `cleanup_policy`
-`delete-on-success`) before `mkdir -p`, then `created` after.
+`<round-dir>/manifest.jsonl`. The round directory is the ledger's
+home, so it cannot be preceded by its own `intent`: resolve
+`$TMPDIR/herdr-fleet-<round-slug>` to an absolute path, `mkdir -p`
+it, then immediately append `created` for the round directory
+(`kind` `dir`, `role` `round-dir`, `cleanup_policy`
+`delete-on-success`) before doing anything else — step 5 reuses
+this directory. Mint a `round_id` unique to this invocation;
+ownership is proved by `round_id`, not by round-slug or label.
+`seq` increases monotonically so an auditor can detect a truncated
+or misordered append.
 
 A mutable row cannot be write-ahead, so this is an event log: write an
 `intent` event and flush it before each create command; append a
 `created` event immediately after a successful response, before doing
 anything else; append a `state` event on disposition. Never rewrite an
-earlier line. The same write-ahead covers every resource this round
-creates, not only the worktrees below.
+earlier line. Every later resource follows that write-ahead; only the
+round directory is created first so the ledger can exist.
 
 Record envelope:
 
@@ -565,8 +567,12 @@ audit candidate, not automatic destructive authority.
    `git status --porcelain` is empty, the branch tip equals the
    recorded `accepted_sha`,
    `git merge-base --is-ancestor <accepted_sha> <merge-target>`
-   passes, and its agent, pane, and processes are all gone. Then
-   enumerate the workspace's panes and confirm via
+   passes, the package agent is gone from `herdr agent list`, and
+   every auxiliary pane is already closed. The container root pane
+   stays — never close it explicitly;
+   `herdr worktree remove --workspace <id>` needs that workspace as
+   its only handle. Enumerate the workspace's remaining panes (the
+   recorded root pane included) and confirm via
    `herdr pane process-info --pane <pane-id>` that each holds
    only an idle shell — herdr shuts down the workspace's terminal
    runtimes before a forced removal, so a vanished agent does not
@@ -589,18 +595,21 @@ audit candidate, not automatic destructive authority.
 3. Account for the rest of this round's residue: the round brief
    directory, each package branch, any merge-target branch this
    round created, the merge tab's root pane, and worktree parent
-   directories. Delete the brief directory with
-   `rm -rf "${TMPDIR:?}/herdr-fleet-<round-slug>"` — the `:?` guard
-   keeps an unset `TMPDIR` from aiming the delete at `/`. It names
-   repo internals and has served its purpose. Leave the merge
-   target in place; it is the round's output. Append a `state`
-   event per disposition.
+   directories. Leave the merge target in place; it is the round's
+   output. Append a `state` event per disposition for every
+   resource except the round directory, while the manifest still
+   exists.
 4. Final report: the merge target branch, then per package — branch,
    correction cycles used, quick-check evidence — plus anything
-   dropped. Then every item from the manifest and residue inventory
-   as one of `removed`, `retained(<reason>)`, or
-   `cleanup_failed(<error>)`. What happens to the target branch next
-   is the user's call.
+   dropped. Build every item except the round directory from the
+   still-live manifest as one of `removed`, `retained(<reason>)`,
+   or `cleanup_failed(<error>)`. Then delete the round directory
+   last with `rm -rf "${TMPDIR:?}/herdr-fleet-<round-slug>"` — the
+   `:?` guard keeps an unset `TMPDIR` from aiming the delete at
+   `/`. It names repo internals and has served its purpose.
+   Observe that outcome and fold it into the report; there is no
+   post-delete append. What happens to the target branch next is
+   the user's call.
 
 Round invariants: implementation — conflict resolution included — belongs
 to the agents and diff-grading to the reviewers; review, quick checks,
@@ -612,6 +621,8 @@ user; a worktree holding dirty or unmerged work stays in place; a finished
 agent session closes before its package or merge task is considered done;
 a container root pane is never closed explicitly — auxiliary panes close
 as soon as their agent is gone and their output is persisted, and
-containers reclaim the rest; every resource the round creates is written
-to the manifest before it is created, and only manifest-confirmed
-resources are ever reclaimed.
+containers reclaim the rest; every resource except the round directory
+is written to the manifest before it is created — the round directory
+is the ledger's home, so it is created first and recorded as `created`
+immediately after; only manifest-confirmed resources are ever
+reclaimed.
