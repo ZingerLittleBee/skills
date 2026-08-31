@@ -68,7 +68,10 @@ needs a fresh merge target, that branch (below). Agent names are
 server-global and branches already live in the repo: check
 `herdr agent list` and `git branch --list "feat/*"` for
 collisions now — the round-slug branch included — and pick a different
-slug rather than debug ambiguous targets mid-round.
+slug rather than debug ambiguous targets mid-round. Also refuse a
+round-slug whose `"${TMPDIR:?}/herdr-fleet-<round-slug>"` already
+exists: a leftover from an interrupted round is not this
+invocation's; surface it instead of adopting it.
 
 Now fix the round's **base** and **merge target** from the main repo's
 current branch:
@@ -112,15 +115,19 @@ user already said to run unattended).
 
 Persist an append-only JSONL manifest at
 `<round-dir>/manifest.jsonl`. The round directory is the ledger's
-home, so it cannot be preceded by its own `intent`: resolve
-`$TMPDIR/herdr-fleet-<round-slug>` to an absolute path, `mkdir -p`
-it, then immediately append `created` for the round directory
-(`kind` `dir`, `role` `round-dir`, `cleanup_policy`
-`delete-on-success`) before doing anything else — step 5 reuses
-this directory. Mint a `round_id` unique to this invocation;
-ownership is proved by `round_id`, not by round-slug or label.
-`seq` increases monotonically so an auditor can detect a truncated
-or misordered append.
+home, so it cannot be preceded by its own `intent`. Resolve
+`"${TMPDIR:?}/herdr-fleet-<round-slug>"` to an absolute path — the
+`:?` fails closed if `TMPDIR` is unset. If that path already
+exists, stop and surface it; do not `mkdir -p` and do not adopt
+it. Then `mkdir` (not `mkdir -p`) so a race still fails, and
+immediately append `created` for the round directory (`kind`
+`dir`, `role` `round-dir`, `cleanup_policy` `delete-on-success`)
+with that resolved absolute path in `selector` and `observed`
+before doing anything else — step 5 reuses this directory. Mint a
+`round_id` unique to this invocation; ownership is proved by
+`round_id`, not by round-slug or label. `seq` increases
+monotonically so an auditor can detect a truncated or misordered
+append.
 
 A mutable row cannot be write-ahead, so this is an event log: write an
 `intent` event and flush it before each create command; append a
@@ -604,12 +611,16 @@ audit candidate, not automatic destructive authority.
    dropped. Build every item except the round directory from the
    still-live manifest as one of `removed`, `retained(<reason>)`,
    or `cleanup_failed(<error>)`. Then delete the round directory
-   last with `rm -rf "${TMPDIR:?}/herdr-fleet-<round-slug>"` — the
-   `:?` guard keeps an unset `TMPDIR` from aiming the delete at
-   `/`. It names repo internals and has served its purpose.
-   Observe that outcome and fold it into the report; there is no
-   post-delete append. What happens to the target branch next is
-   the user's call.
+   last, using only the exact absolute path recorded on its
+   `created` event: `rm -rf "${recorded_round_dir:?}"`, after
+   confirming that path still matches the recorded id and that
+   `<recorded_round_dir>/manifest.jsonl` carries this round's
+   `round_id`. Do not reconstruct the path from `$TMPDIR` and the
+   slug. The `:?` guard keeps an unset recorded path from aiming
+   the delete at `/`. It names repo internals and has served its
+   purpose. Observe that outcome and fold it into the report;
+   there is no post-delete append. What happens to the target
+   branch next is the user's call.
 
 Round invariants: implementation — conflict resolution included — belongs
 to the agents and diff-grading to the reviewers; review, quick checks,
