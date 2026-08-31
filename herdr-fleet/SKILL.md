@@ -367,8 +367,8 @@ the source this architecture keeps out: by the fourth package your
 judgment is swimming in the first three's implementation noise, and
 having briefed the round you also want it to succeed — a reviewer that
 wrote none of it grades without that bias. Split a review pane off the
-package's root pane, read the new pane id from the JSON, and start the
-reviewer in it:
+package's root pane (append it to the round manifest, step 3), read
+the new pane id from the JSON, and start the reviewer in it:
 
 ```bash
 herdr pane split <root-pane-id> --cwd <worktree-path> --no-focus
@@ -448,10 +448,16 @@ package's worktree and branch stay in place for the user to inspect — its
 work exists nowhere else — but its implementer and reviewer sessions close
 at the moment of the drop. An accepted package's implementer and reviewer
 sessions close immediately once both gates have passed and
-`accepted_sha` is recorded. Do not mark the
-package concluded until both names are gone from `herdr agent list` and
-their panes are back at shell prompts, using the shutdown procedure in
-step 9. Merge-target work uses dedicated agents instead of keeping package
+`accepted_sha` is recorded. Shut each agent with the exit procedure in
+step 9, then close the reviewer pane with `herdr pane close <pane-id>`
+once its four preconditions hold (agent gone, verdict persisted, idle
+shell via `herdr pane process-info`, recorded root pane id still live
+in the workspace). Never close the package root pane: it is the
+workspace's last pane after the reviewer closes, and closing it would
+collapse the workspace that `herdr worktree remove --workspace <id>`
+needs as its only handle. Do not mark the package concluded until both
+names are gone from `herdr agent list` and the reviewer pane is closed.
+Merge-target work uses dedicated agents instead of keeping package
 sessions alive.
 
 ## 8. Quick-check serially
@@ -482,6 +488,20 @@ non-dropped package has passed review and its quick checks, merge only
 those packages. If none remain, skip this step and report the dropped
 worktrees and branches.
 
+Create one merge tab for all merge-phase work, bound to the
+orchestrator workspace id recorded in step 2 — `--workspace` is
+required, because without it `herdr tab create` follows the globally
+active workspace and a focus change would place the tab elsewhere
+(append the tab to the round manifest, step 3):
+
+```bash
+herdr tab create --workspace <orchestrator-workspace-id> --cwd <main-repo-path> --label <round-slug>-merge --no-focus
+```
+
+Record the merge tab id and its root pane id. Every merge fixer and
+merge reviewer splits inside this tab; never use `--current` here, and
+never close this tab's root pane — `herdr tab close` reclaims it.
+
 1. Re-check the main repo: the tree still clean (`git status`) and HEAD
    still on the branch recorded in step 2 (`git rev-parse --abbrev-ref
    HEAD`) — hours may have passed, and uncommitted edits or a mid-round
@@ -502,11 +522,12 @@ worktrees and branches.
    record `pre_merge_sha=$(git rev-parse HEAD)`, then run
    `git merge --no-ff feat/<slug>`. A clean merge is bookkeeping and yours
    to run. A conflicted merge is implementation in the main checkout, not
-   the package worktree. Split a new pane rooted there and start a
-   dedicated fixer:
+   the package worktree. Split a fixer pane off the merge tab's root
+   pane (append it to the round manifest, step 3) and start a dedicated
+   fixer:
 
    ```bash
-   herdr pane split --current --cwd <main-repo-path> --no-focus
+   herdr pane split <merge-root-pane-id> --cwd <main-repo-path> --no-focus
    herdr agent start <slug>-merge --kind <kind> --pane <new-pane-id>
    ```
 
@@ -516,24 +537,29 @@ worktrees and branches.
    exists only in the main checkout. Exactly one fixer may write the main
    checkout at a time. Once the fixer settles, require a clean committed
    merge, record `candidate_sha=$(git rev-parse HEAD)`, and dispatch
-   `<slug>-merge-review` in another main-checkout pane to grade
-   `git diff <pre_merge_sha> <candidate_sha>` read-only, concentrating on
-   the conflict resolution and combined behavior. Accept only a verdict
-   naming that candidate sha, then shut both merge agents down. Start the
-   next merge only after this review passes.
+   `<slug>-merge-review` in another pane split the same way off the merge
+   tab's root to grade `git diff <pre_merge_sha> <candidate_sha>`
+   read-only, concentrating on the conflict resolution and combined
+   behavior. Accept only a verdict naming that candidate sha, then shut
+   both merge agents down and close both auxiliary panes promptly
+   (preconditions in the shutdown paragraph below) — do not defer closes
+   to the end of the step. Start the next merge only after this review
+   passes.
 3. Run the repo's full build and test suite on the merge target — the
    round's heavy build, and the first time the packages meet, so
    cross-package failures land here. On failure, record
    `pre_fix_sha=$(git rev-parse HEAD)` and send the verbatim output by
-   file-drop to one
-   dedicated fixer rooted in the main checkout (create it as in step 2
-   if needed). Once it settles, require a clean tree and a new commit,
-   record `candidate_sha=$(git rev-parse HEAD)`, then dispatch
-   `<slug>-merge-review` in another main-checkout pane to grade the exact
-   `git diff <pre_fix_sha> <candidate_sha>` read-only.
-   Accept only a verdict naming that candidate sha, shut both agents down,
-   and re-run the suite. Handle one fixer/reviewer pair at a time until
-   the suite passes and `git status --porcelain` is empty.
+   file-drop to one dedicated fixer rooted in the main checkout (split
+   off the merge tab's root as in step 2 if needed; append each new pane
+   to the round manifest, step 3). Once it settles, require a clean tree
+   and a new commit, record `candidate_sha=$(git rev-parse HEAD)`, then
+   dispatch `<slug>-merge-review` in another merge-tab pane to grade the
+   exact `git diff <pre_fix_sha> <candidate_sha>` read-only. Accept only
+   a verdict naming that candidate sha, shut both agents down, close both
+   auxiliary panes promptly, and re-run the suite. Handle one
+   fixer/reviewer pair at a time until the suite passes and
+   `git status --porcelain` is empty — closing each pair before the next
+   keeps panes from compounding across fix cycles.
 
 Throughout, the main checkout changes hands whole: exactly one agent
 works in it at a time, and while one does, run no git there yourself —
@@ -547,10 +573,24 @@ Submit the agent's literal exit command with Enter through its pane, for
 example `herdr pane run <pane-id> /quit` for Grok or
 `herdr pane run <pane-id> /exit` for agents that use `/exit`; use
 `herdr agent send-keys <name> ctrl+c` only as an interrupt fallback after
-reading the screen. Confirm the name is gone from `herdr agent list` and
-the pane is back at a shell prompt. Everything the round produced now
-lives on the merge target; anything needed after cleanup is a fresh
-agent's job there.
+reading the screen. Confirm the name is gone from `herdr agent list`.
+Agent exit is not the end state for an auxiliary pane (package reviewer,
+merge fixer, merge reviewer): once required output is persisted, verify
+an idle shell with `herdr pane process-info --pane <pane-id>`, confirm
+the recorded container root pane id still exists in the same
+workspace/tab (check that id, not a pane count), then
+`herdr pane close <pane-id>`. Never close a package workspace root pane
+or the merge tab's root pane — `herdr worktree remove --workspace <id>`
+needs the package workspace alive, and `herdr tab close` reclaims the
+merge tab's root. When merge work is finished, close the merge tab:
+
+```bash
+herdr tab close <merge-tab-id>
+```
+
+That close is the safety net for any auxiliary pane the prompt closes
+missed. Everything the round produced now lives on the merge target;
+anything needed after cleanup is a fresh agent's job there.
 
 ## 10. Clean up and report
 
