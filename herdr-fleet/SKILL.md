@@ -543,7 +543,7 @@ never close this tab's root pane — `herdr tab close` reclaims it.
    `git diff <pre_merge_sha> <candidate_sha>` read-only, concentrating
    on the conflict resolution and combined behavior. Accept only a
    verdict naming that candidate sha. Start the next merge only after
-   this review passes.
+   this review passes and the pair is shut (shutdown procedure below).
 3. Run the repo's full build and test suite on the merge target — the
    round's heavy build, and the first time the packages meet, so
    cross-package failures land here. On failure, record
@@ -555,7 +555,8 @@ never close this tab's root pane — `herdr tab close` reclaims it.
    `<slug>-merge-review` in another merge-tab pane (write-ahead as in
    item 2) to grade the exact `git diff <pre_fix_sha> <candidate_sha>`
    read-only. Accept only a verdict naming that candidate sha and
-   re-run the suite. Handle one fixer/reviewer pair at a time. If a
+   re-run the suite after the pair is shut (shutdown procedure below).
+   Handle one fixer/reviewer pair at a time. If a
    fixer is blocked on a user decision, or the failure cannot be
    resolved this round, persist the failing output, leave the
    merge-target red-suite fix state untouched, and go to step 10.
