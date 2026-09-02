@@ -14,10 +14,9 @@
 ## Task Scope and Engineering
 
 - Match the requested task type. Read-only reviews, diagnoses, and explanations authorize inspection and reporting, not edits.
-- Prefer root-cause fixes and simple, idiomatic, maintainable code over patches layered on broken design.
 - When already editing code, fix only adjacent, low-risk papercuts. Raise broader refactors, architecture changes, user-visible behavior changes, new dependencies, and substantial test expansion before widening scope.
 - Remove code, parameters, and helpers made obsolete by the current change, and update their callers. Do not leave relocation breadcrumbs such as `// moved to X`.
-- Review the existing architecture before choosing an approach. Use official documentation when behavior is unfamiliar, version-sensitive, or uncertain, and search before abandoning the current direction.
+- Review the existing architecture before choosing an approach, and investigate before abandoning the current direction.
 
 ## Tooling and Safety
 
@@ -26,14 +25,13 @@
 - Treat `git status` and `git diff` as read-only context. Preserve unrelated or pre-existing changes and never assume they are yours.
 - Never commit or expose secrets. Refer to credentials through environment-variable names rather than placing values in commands, logs, or repository text.
 - Actions visible to other people or affecting external systems, including comments, issue changes, workflow triggers, releases, and deployments, require an explicit user request.
-- When test or build entry points are unclear, inspect `.github/workflows` and mirror the relevant feasible CI behavior locally.
+- When test or build entry points are unclear, inspect the repository's CI configuration and mirror the relevant feasible checks locally.
 
 ## Git Commits and Pull Requests
 
 - Local commits are authorized by default. Stage and commit only changes from the current task.
 - Use one logical unit per commit when practical. Commit completed units promptly, but run verification once near the end instead of before every commit.
-- Commit to the current branch unless the user explicitly requests a new branch.
-- Pushing, opening PRs, rebasing, force-pushing, destructive Git operations, and other Git writes beyond local commits or feature-branch creation require explicit authorization.
+- Commit to the current branch. Creating branches and all Git writes beyond local commits, including pushing, opening PRs, rebasing, force-pushing, and destructive operations, require explicit authorization.
 - Use Conventional Commits with `feat`, `fix`, `chore`, `refactor`, `docs`, `test`, `perf`, `build`, `ci`, `style`, or `revert`. Write an imperative, lowercase subject no longer than 72 characters; add a body only when the rationale is not obvious from the diff.
 - Never add `Co-Authored-By:` trailers, generation signatures, or tool watermarks.
 
@@ -49,19 +47,17 @@
 - Do not use `unwrap`, panic, or equivalent failure paths in production code; handle errors explicitly. Tests may use them.
 - Prefer `crate::` over `super::` outside tests. Avoid global state, use strong domain types, and use `pub use` only when intentionally re-exposing a dependency to downstream consumers.
 - Keep same-module tests at the bottom inside `mod tests {}` rather than creating ad hoc inline test modules.
-- Before handoff, run `cargo fmt` (never `cargo fmt --all`), `cargo clippy --workspace --benches --tests --examples --all-features`, and the relevant `cargo test` or `just` targets.
+- Before handoff, run `cargo fmt` (never `cargo fmt --all`) and the repository's documented Clippy and test targets. If none exist, run relevant `cargo clippy` and `cargo test` commands for the changed behavior.
+- When Rust owns shared API or domain types consumed by TypeScript, use the repository's generation pipeline; for new projects, prefer `ts-rs` over hand-maintained interfaces.
 
 ### TypeScript
 
 - Follow the repository lockfile's package manager; use `pnpm` for new projects.
 - Do not use `any` or assertions that hide incorrect types. `as const` and narrow assertions at genuine third-party type gaps are acceptable.
-- For browser applications, target modern browsers unless the project states otherwise.
 
 ### React and Frontend
 
-- Keep components focused and reusable. Prefer composition, explicit data flow, hooks, and helpers over prop soup, duplicated state, and oversized components.
 - Reuse the project's design system, primitives, tokens, and styling patterns, and prefer mature accessible primitives over rebuilding common controls. Do not introduce a new design system as incidental work.
-- In Rust and TypeScript projects, keep Rust as the source of truth for shared API and domain types. Use the repository's existing generation pipeline; for new projects, prefer `ts-rs` over hand-maintained duplicate interfaces.
 
 ### Python
 
@@ -69,13 +65,12 @@
 
 ## Dependencies
 
-- Prefer popular, actively maintained dependencies with clear APIs. Established lightweight dependencies may be added when needed; confirm before adding niche, unusual, or heavyweight choices.
+- Prefer established lightweight dependencies. Ask before adding niche, unusual, or heavyweight dependencies.
 
 ## Final Handoff
 
-- Confirm the relevant tests and commands passed, and list them when requested.
-- Summarize changes with file and line references, including any adjacent cleanup or scope expansion.
-- Call out remaining TODOs, uncertainties, and follow-up work.
+- Report relevant verification commands and outcomes.
+- Summarize changes with file and line references, including adjacent cleanup or approved scope expansion. Call out remaining TODOs, uncertainties, and follow-up work.
 
 ## Communication
 
@@ -85,6 +80,5 @@
 
 ## Context7
 
-- Prefer `ctx7` over web search for current, unfamiliar, or version-specific library documentation; otherwise answer directly.
-- Run `npx ctx7@latest library <name> "<question>"` (append `/version` when needed), then `npx ctx7@latest docs <libraryId> "<question>"`. Use at most three commands and never include secrets.
-- If Context7 quota is exhausted, use the Mintlify index `context` tool instead.
+- For current, unfamiliar, or version-specific library behavior, prefer `ctx7` over web search when available; otherwise consult official documentation or an available documentation tool.
+- Run `npx ctx7@latest library <name> "<question>"` (append `/version` when needed), then `npx ctx7@latest docs <libraryId> "<question>"`. Use at most three commands and never include secrets. If Context7 is unavailable or out of quota, use an available alternative such as Mintlify Index's `context` tool.
