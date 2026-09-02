@@ -1,6 +1,6 @@
 # agent-profile
 
-**Not a skill.** This directory is the single source of truth for the shared user-level agent profile (`AGENTS.md`), the global instructions for all AI coding CLI tools (Claude Code, Codex, OpenCode, Droid, Grok, Cursor).
+**Not a skill.** This directory is the single source of truth for the shared user-level agent profile (`AGENTS.md`), the global instructions for all AI coding tools (Claude Code, Codex, OpenCode, Droid, Grok, Delta, Cursor).
 
 Everything outside this repo is a symlink, except Cursor (see below). Edit `AGENTS.md` here, commit here; symlink tools pick up the change on their next session. After editing, re-run `./setup-agent-profile.sh` so the Cursor rule is regenerated.
 
@@ -11,7 +11,8 @@ Everything outside this repo is a symlink, except Cursor (see below). Edit `AGEN
 ~/.codex/AGENTS.md               │
 ~/.config/opencode/AGENTS.md     ├─> <repo>/agent-profile/AGENTS.md
 ~/.factory/AGENTS.md             │
-~/.grok/AGENTS.md               ─┘
+~/.grok/AGENTS.md                │
+~/Library/Application Support/delta/AGENTS.md ─┘
 
 ~/.cursor/rules/agent-profile.mdc   generated always-apply .mdc (not a symlink)
 ```
@@ -26,7 +27,7 @@ Clone this repo anywhere, then run:
 ./setup-agent-profile.sh
 ```
 
-Idempotent; re-run it whenever a tool update replaces a symlink with a regular file (existing regular files are backed up, never overwritten), after you edit `AGENTS.md` (Cursor copy), or if the repo moves.
+Idempotent; re-run it whenever a tool update replaces a symlink with a regular file (existing regular files are backed up, never overwritten), after installing a supported tool, after editing `AGENTS.md` (Cursor copy), or if the repo moves. Targets whose parent directories do not exist are skipped with a notice.
 
 ## Rules of the road
 

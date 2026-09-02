@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Wire the shared agent profile into every AI coding CLI tool.
+# Wire the shared agent profile into installed AI coding tools.
 # Idempotent: safe to re-run anytime (e.g. after a tool update clobbers a link,
 # or after editing agent-profile/AGENTS.md so the Cursor rule is regenerated).
 set -euo pipefail
@@ -15,16 +15,22 @@ GENERATED_MARKER="generated-by: setup-agent-profile.sh"
 backup_if_regular() {
   local dst="$1"
   if [[ -e "$dst" && ! -L "$dst" ]]; then
-    local bak="$dst.bak-$(date +%Y%m%d%H%M%S)"
+    local bak
+    bak="$dst.bak-$(date +%Y%m%d%H%M%S)"
     mv "$dst" "$bak"
     echo "  backed up regular file to $bak"
   fi
 }
 
-# link <target>: replace target with a symlink to the profile.
+# link <target>: replace target with a symlink when its parent directory exists.
 link() {
   local dst="$1"
-  mkdir -p "$(dirname "$dst")"
+  local dst_dir
+  dst_dir="$(dirname "$dst")"
+  if [[ ! -d "$dst_dir" ]]; then
+    echo "  skipped $dst (parent directory not found)"
+    return
+  fi
   backup_if_regular "$dst"
   ln -sfn "$PROFILE" "$dst"
   echo "  $dst -> $PROFILE"
@@ -35,7 +41,12 @@ link() {
 # walk). AGENTS.md has no Cursor frontmatter, so this writes an always-apply
 # .mdc that embeds the profile. Re-run this script after editing AGENTS.md.
 install_cursor_rule() {
-  mkdir -p "$(dirname "$CURSOR_RULE")"
+  local rule_dir
+  rule_dir="$(dirname "$CURSOR_RULE")"
+  if [[ ! -d "$rule_dir" ]]; then
+    echo "  skipped $CURSOR_RULE (parent directory not found)"
+    return
+  fi
   if [[ -L "$CURSOR_RULE" ]]; then
     rm "$CURSOR_RULE"
   elif [[ -e "$CURSOR_RULE" ]] && ! grep -q "$GENERATED_MARKER" "$CURSOR_RULE"; then
@@ -54,6 +65,7 @@ link "$HOME/.codex/AGENTS.md"           # Codex
 link "$HOME/.config/opencode/AGENTS.md" # OpenCode
 link "$HOME/.factory/AGENTS.md"         # Droid (Factory)
 link "$HOME/.grok/AGENTS.md"            # Grok
+link "$HOME/Library/Application Support/delta/AGENTS.md" # Delta
 install_cursor_rule                     # Cursor (CLI + editor)
 
-echo "Done. Tools pick up the profile on their next session."
+echo "Done. Configured tools pick up the profile on their next session."

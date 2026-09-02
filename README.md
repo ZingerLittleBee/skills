@@ -44,7 +44,7 @@ npx skills add ZingerLittleBee/skills@writing-x-zh-briefs
 ## Agent profile
 
 [`agent-profile/AGENTS.md`](agent-profile/AGENTS.md) is the user-level agent profile
-shared across Claude Code, Codex, OpenCode, Droid, Grok, and Cursor. It is not a
+shared across Claude Code, Codex, OpenCode, Droid, Grok, Delta, and Cursor. It is not a
 skill; it is version-controlled here and wired into each tool by
 [`./setup-agent-profile.sh`](setup-agent-profile.sh) (symlinks for most tools; a
 generated always-apply `.mdc` for Cursor). On a new machine, clone this repo and
