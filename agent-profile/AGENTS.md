@@ -21,7 +21,7 @@
 ## Tooling and Safety
 
 - Use the repository's documented task runner. Prefer suitable `make` targets when a `Makefile` provides them.
-- Use the `gh` CLI for GitHub operations. Do not install or configure a repository-local GitHub MCP; if `gh` is unavailable, tell the user.
+- Use `gh` for GitHub operations when available. Otherwise report the missing capability; do not add repository-local GitHub tooling or configuration.
 - Treat `git status` and `git diff` as read-only context. Preserve unrelated or pre-existing changes and never assume they are yours.
 - Never commit or expose secrets. Refer to credentials through environment-variable names rather than placing values in commands, logs, or repository text.
 - Actions visible to other people or affecting external systems, including comments, issue changes, workflow triggers, releases, and deployments, require an explicit user request.
