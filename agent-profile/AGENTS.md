@@ -40,28 +40,12 @@
 - Exercise real behavior when practical. Mock only genuine external boundaries that cannot reasonably run in tests.
 - Unless asked otherwise, run the existing tests and checks relevant to the changed behavior rather than the entire suite.
 
-## Language-Specific Guidance
+## Language Defaults
 
-### Rust
-
-- Do not use `unwrap`, panic, or equivalent failure paths in production code; handle errors explicitly. Tests may use them.
-- Prefer `crate::` over `super::` outside tests. Avoid global state, use strong domain types, and use `pub use` only when intentionally re-exposing a dependency to downstream consumers.
-- Keep same-module tests at the bottom inside `mod tests {}` rather than creating ad hoc inline test modules.
-- Before handoff, run `cargo fmt` (never `cargo fmt --all`) and the repository's documented Clippy and test targets. If none exist, run relevant `cargo clippy` and `cargo test` commands for the changed behavior.
-- When Rust owns shared API or domain types consumed by TypeScript, use the repository's generation pipeline; for new projects, prefer `ts-rs` over hand-maintained interfaces.
-
-### TypeScript
-
-- Follow the repository lockfile's package manager; use `pnpm` for new projects.
-- Do not use `any` or assertions that hide incorrect types. `as const` and narrow assertions at genuine third-party type gaps are acceptable.
-
-### React and Frontend
-
-- Reuse the project's design system, primitives, tokens, and styling patterns, and prefer mature accessible primitives over rebuilding common controls. Do not introduce a new design system as incidental work.
-
-### Python
-
-- Follow the existing toolchain. For new projects, use `uv` and `pyproject.toml` instead of pip-managed virtual environments, Poetry, or `requirements.txt`; add type hints throughout and prefer explicit models over loose dictionaries.
+- Rust: avoid `unwrap` and panics in production. Run `cargo fmt` rather than `cargo fmt --all`, and use the repository's documented Clippy and test targets.
+- TypeScript: follow the lockfile's package manager; use `pnpm` for new projects. Avoid `any` and assertions that hide type errors, allowing narrow assertions only at genuine third-party gaps.
+- Frontend: reuse the project's design system and accessible primitives. Do not introduce another design system as incidental work.
+- Python: follow the existing toolchain; for new projects, use `uv` and `pyproject.toml`, add type hints, and prefer explicit models over loose dictionaries.
 
 ## Dependencies
 
