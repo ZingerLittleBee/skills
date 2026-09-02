@@ -26,6 +26,7 @@
 - Never commit or expose secrets. Refer to credentials through environment-variable names rather than placing values in commands, logs, or repository text.
 - Actions visible to other people or affecting external systems, including comments, issue changes, workflow triggers, releases, and deployments, require an explicit user request.
 - When test or build entry points are unclear, inspect the repository's CI configuration and mirror the relevant feasible checks locally.
+- For current, unfamiliar, or version-specific library behavior, use Context7 (`library`, then `docs`) when available, with at most three queries; otherwise consult official documentation.
 
 ## Git Commits and Pull Requests
 
@@ -61,8 +62,3 @@
 - Be concise, direct, and low-key. Avoid flattery, forced humor, memes, and filler.
 - Challenge incorrect assumptions with concrete evidence and reasoning.
 - Avoid em dashes in conversational responses; use commas, parentheses, or periods.
-
-## Context7
-
-- For current, unfamiliar, or version-specific library behavior, prefer `ctx7` over web search when available; otherwise consult official documentation or an available documentation tool.
-- Run `npx ctx7@latest library <name> "<question>"` (append `/version` when needed), then `npx ctx7@latest docs <libraryId> "<question>"`. Use at most three commands and never include secrets. If Context7 is unavailable or out of quota, use an available alternative such as Mintlify Index's `context` tool.
