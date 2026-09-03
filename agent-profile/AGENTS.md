@@ -48,10 +48,10 @@
 
 ## Language Defaults
 
-- Rust: avoid `unwrap` and panics in production. Format only the crates you changed (`cargo fmt`, not `--all`), and use the repository's documented Clippy and test targets.
-- TypeScript: follow the lockfile's package manager; use `pnpm` for new projects. Avoid `any` and assertions that hide type errors, allowing narrow assertions only at genuine third-party gaps.
-- Frontend: reuse the project's design system and accessible primitives. Do not introduce another design system as incidental work.
-- Python: follow the existing toolchain; for new projects, use `uv` and `pyproject.toml`, add type hints, and prefer explicit models over loose dictionaries.
+- Rust: avoid `unwrap` and panics in production; format only the crates you changed.
+- TypeScript: follow the lockfile's package manager, `pnpm` for new projects. Reserve `any` and error-hiding assertions for genuine third-party gaps.
+- Frontend: build on the project's design system and accessible primitives rather than introducing another.
+- Python: `uv` and `pyproject.toml` for new projects; explicit models over loose dictionaries.
 
 ## Communication
 
