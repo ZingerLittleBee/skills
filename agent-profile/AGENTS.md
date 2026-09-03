@@ -23,7 +23,7 @@
 ## Engineering
 
 - Review the existing architecture before choosing an approach, and investigate before abandoning the current direction.
-- Keep changes to what the request needs. Fix an adjacent, low-risk papercut only inside code you are already changing; report other pre-existing bugs, performance concerns, and unrelated behavior as follow-ups in the handoff rather than changing them. Raise broader refactors, architecture changes, user-visible behavior changes, new dependencies, and substantial test expansion before widening scope.
+- Keep changes to what the request needs. Report pre-existing bugs, performance concerns, and behavior the task does not mention as follow-ups in the handoff rather than fixing, optimizing, or extending them, unless the requested behavior cannot work without it. Raise broader refactors, architecture changes, user-visible behavior changes, new dependencies, and substantial test expansion before widening scope.
 - Remove code, parameters, and helpers made obsolete by the current change, and update their callers, leaving no relocation breadcrumbs such as `// moved to X`.
 - Make targeted edits. Rewrite a whole file only when it is short or most of it is changing.
 - Before running a command that changes system state (restarts, deletes, config edits), confirm the evidence supports that specific action. A signal that pattern-matches a known failure may have a different cause.
@@ -74,4 +74,4 @@
 ## Final Handoff
 
 - Report relevant verification commands and outcomes.
-- Summarize changes with file and line references, including adjacent cleanup or approved scope expansion. Call out assumptions made, remaining TODOs, uncertainties, and follow-up work.
+- Summarize changes with file and line references, including approved scope expansion. Call out assumptions made, remaining TODOs, uncertainties, and follow-up work.
