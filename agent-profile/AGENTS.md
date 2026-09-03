@@ -37,7 +37,7 @@
 - Local commits are authorized by default. Stage and commit only changes from the current task.
 - Use one logical unit per commit when practical. Commit completed units promptly, but run verification once near the end instead of before every commit.
 - Commit to the current branch; if that is the default branch, create a working branch first. Rebasing, force-pushing, and other history rewrites or destructive operations require explicit authorization.
-- Use Conventional Commits with `feat`, `fix`, `chore`, `refactor`, `docs`, `test`, `perf`, `build`, `ci`, `style`, or `revert`, with a scope when the repository uses them. Write an imperative, lowercase subject no longer than 72 characters; add a body only when the rationale is not obvious from the diff.
+- Use Conventional Commits, following the repository's existing types and scopes. Keep the subject imperative, lowercase, and under 72 characters; add a body only when the rationale is not obvious from the diff.
 - Never add `Co-Authored-By:` trailers, generation signatures, or tool watermarks.
 
 ## Testing
