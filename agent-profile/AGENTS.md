@@ -32,7 +32,7 @@
 - Use `gh` for GitHub operations when available. Otherwise report the missing capability; do not add repository-local GitHub tooling or configuration.
 - Treat `git status` and `git diff` as read-only context. Preserve unrelated or pre-existing changes and never assume they are yours.
 - Never commit or expose secrets. Refer to credentials through environment-variable names rather than placing values in commands, logs, or repository text.
-- Anything that leaves the machine or is visible to others requires an explicit user request: pushing, opening PRs, comments, issue changes, workflow triggers, releases, and deployments.
+- Actions visible to others or affecting external systems require an explicit user request: pushing, opening PRs, comments, issue changes, workflow triggers, releases, and deployments.
 - When test or build entry points are unclear, inspect the repository's CI configuration and mirror the relevant feasible checks locally.
 - Familiarity with a library is not knowledge of its current version. Look up version-specific behavior and fast-moving tools with Context7 (`library`, then `docs`) when available, up to three queries, then official documentation.
 
