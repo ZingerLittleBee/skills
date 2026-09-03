@@ -9,12 +9,15 @@ disable-model-invocation: true
 Complete several work packages in parallel by giving each one a
 git worktree and a dedicated CLI coding agent inside herdr. You are the
 **orchestrator**: you slice the work, brief the agents, watch their state,
-dispatch reviewers, and run validation. You never implement, and you
-never pull package diffs into your own window — source lives in the
-agents' worktrees and gets graded by dedicated reviewer agents in
-their own panes (step 7). That split is what makes the round safe:
-your judgment on package N stays sharp after babysitting packages A
-through M, and no two writers ever share a checkout.
+dispatch reviewers and checkers, and adjudicate their results. You never
+implement, and you never pull package diffs into your own window —
+source lives in the agents' worktrees and gets graded by dedicated
+reviewer agents in their own panes (step 7), and builds and tests run
+in dedicated
+checker agents (steps 3, 8, 9), never in the orchestrator's window.
+That split is what makes the round safe: your judgment on package N
+stays sharp after babysitting packages A through M, and no two
+writers ever share a checkout.
 
 ## 1. Preconditions
 
@@ -23,8 +26,8 @@ through M, and no two writers ever share a checkout.
 - The main repo's working tree must be clean (`git status`); surface a dirty
   tree instead of working around it.
 - Check `herdr integration status`: every agent kind you plan to
-  assign (reviewer kinds included) needs its integration to read
-  `current` — the watch loop's state detection comes from that
+  assign (reviewer and checker kinds included) needs its integration
+  to read `current` — the watch loop's state detection comes from that
   integration, so run `herdr integration install <kind>` for any kind
   reading `not installed` or `outdated`. (`herdr agent` lists the
   *supported* kinds only; whether an agent binary is actually installed
@@ -43,6 +46,32 @@ or `done`; an `unknown` agent must be read before it counts as anything.
 
 ## 2. Package the work
 
+Do not read the codebase yourself to slice the work. Dispatch a
+read-only **survey agent** first — the host's own subagent facility
+if it has one (an Explore-style read-only agent), otherwise a herdr
+agent `<round-slug>-survey` started in a new tab in the orchestrator
+workspace (pick the round-slug, below, before starting it):
+
+```bash
+herdr tab create --workspace "$HERDR_WORKSPACE_ID" --cwd <main-repo-path> --label <round-slug>-survey --no-focus
+herdr agent start <round-slug>-survey --kind <kind> --pane <root-pane-id>
+```
+
+The survey brief asks, per requested task, for the set of files it
+will touch, its overlap with the other tasks, a difficulty grade with
+reasons, and the convention files, glossary, and design specs the
+implementer must read, by path — and once for the repo, the
+dependency-resolution command, any large ignored build artifacts a
+worktree will need, and the project's build and per-package test
+commands, which feed steps 3 and 8. Package from that report and
+adjudicate; do not re-derive the survey by reading code. If the herdr
+fallback is used it is the round's only pre-ledger resource (the
+round directory does not exist yet): its report is written to
+`"${TMPDIR:?}/herdr-fleet-<round-slug>-survey.md"`, the agent is shut
+and its tab closed (step 9 shutdown procedure) before step 3 begins,
+and the report file is moved into the round directory once that
+exists in step 3, so it is reclaimed with the round.
+
 Group the requested tasks into packages that can genuinely run in
 parallel — and slice aggressively: parallel wall-clock is the point of
 the round, so whenever a task decomposes into independent pieces, make
@@ -60,14 +89,16 @@ only what truly depends on another package's output:
 
 Give the round a short kebab-case **round-slug** and each package its own
 slug. The package slug names everything the package owns — branch
-`feat/<slug>`, worktree label, agent, reviewer agent `<slug>-review`,
-merge fixer `<slug>-merge`, merge reviewer `<slug>-merge-review`, and
-brief file — so `herdr agent list` reads as a status board; the
-round-slug names the brief directory (step 5) and, when the round
-needs a fresh merge target, that branch (below). Agent names are
-server-global and branches already live in the repo: check
-`herdr agent list` and `git branch --list "feat/*"` for
-collisions now — the round-slug branch included — and pick a different
+`feat/<slug>`, worktree label, agent, checker agent `<slug>-check`,
+reviewer agent `<slug>-review`, merge fixer `<slug>-merge`, merge
+reviewer `<slug>-merge-review`, and brief file — so `herdr agent list`
+reads as a status board; the round-slug names the survey agent
+(above), the brief directory (step 5), the merge checker
+`<round-slug>-check` (step 9) and, when the round needs a fresh merge
+target, that branch (below). Agent names are server-global and
+branches already live in the repo: check `herdr agent list` and
+`git branch --list "feat/*"` for collisions now — the round-slug
+branch included — and pick a different
 slug rather than debug ambiguous targets mid-round. Also refuse a
 round-slug whose `"${TMPDIR:?}/herdr-fleet-<round-slug>"` already
 exists: that leftover is an interrupted round's ledger — recover it
@@ -124,10 +155,12 @@ still fails, and immediately append `created` for the round
 directory (`kind` `dir`, `role` `round-dir`, `cleanup_policy`
 `delete-on-success`) with that resolved absolute path in `selector`
 and `observed` before doing anything else — step 5 reuses this
-recorded path, never a second `$TMPDIR` resolve. Mint a `round_id`
-unique to this invocation; ownership is proved by `round_id`, not
-by round-slug or label. `seq` increases monotonically so an auditor
-can detect a truncated or misordered append.
+recorded path, never a second `$TMPDIR` resolve. If a herdr survey
+agent left a report in `$TMPDIR` (step 2), move it into the round
+directory now. Mint a `round_id` unique to this invocation;
+ownership is proved by `round_id`, not by round-slug or label. `seq`
+increases monotonically so an auditor can detect a truncated or
+misordered append.
 
 A mutable row cannot be write-ahead, so this is an event log: write an
 `intent` event and flush it before each create command; append a
@@ -149,7 +182,7 @@ Record envelope:
   "event": "intent | created | state",
   "resource_key": "package/<slug>/worktree",
   "kind": "worktree | tab | pane | agent | branch | dir",
-  "role": "package-container | package-implementer | package-reviewer | merge-container | merge-fixer | merge-reviewer | package-branch | round-dir | merge-target | worktree-parent-directory | container-root-pane",
+  "role": "package-container | package-implementer | package-reviewer | package-checker | merge-container | merge-fixer | merge-reviewer | merge-checker | package-branch | round-dir | merge-target | worktree-parent-directory | container-root-pane",
   "parent_key": "<logical parent resource_key or null>",
   "cleanup_policy": "remove-when-merged | close-aux | close-container | retain-if-unmerged | delete-on-success | report-only",
   "selector": {},
@@ -187,20 +220,40 @@ mid-round, and every later verification diffs against it.
 
 Append `created` for all four from the JSON (workspace id, root pane
 id, and path on the worktree and container-root-pane; branch ref;
-parent path). Reviewers (step 7) and quick checks (step 8) need the
-worktree path. Then make the worktree actually buildable before
-starting an agent in it:
+parent path). Reviewers (step 7) and checkers (step 8) need the
+worktree path. The worktree still has to be made buildable before an
+implementer starts in it, and that preparation is the package's
+**checker agent**'s job, not yours. Right after the worktree's
+`created` events, split a checker pane off the root pane, write-ahead
+the pane and the agent (`role` `package-checker`, `kind` `pane` /
+`agent`, `cleanup_policy` `close-aux`), read the new pane id from the
+JSON, and start it:
+
+```bash
+herdr pane split <root-pane-id> --cwd <worktree-path> --no-focus
+herdr agent start <slug>-check --kind <kind> --pane <new-pane-id>
+```
+
+Brief it (file-drop, step 5) with a preparation brief that carries:
 
 - **Binary artifacts don't follow.** Git worktrees share history, not
-  ignored build artifacts. If the build depends on a large local artifact
-  (a prebuilt xcframework, a vendored binary), copy the real directory into
-  the worktree — symlinks often defeat build systems that resolve artifact
-  identity through the path.
-- Run the project's dependency resolution step in the worktree once
-  (e.g. `swift package resolve`, `pnpm install`); retry on transient
-  network failures rather than concluding the worktree is broken.
-  Resolution contends for the same shared caches as builds, so prepare
-  worktrees one at a time.
+  ignored build artifacts. Name each large local artifact the build
+  depends on (a prebuilt xcframework, a vendored binary — the survey
+  report lists them) and have the checker copy the real directory
+  from the main repo into the worktree; symlinks often defeat build
+  systems that resolve artifact identity through the path.
+- The project's dependency-resolution command from the survey report
+  (e.g. `swift package resolve`, `pnpm install`), to run once in the
+  worktree; retry on transient network failures rather than
+  concluding the worktree is broken.
+- No build and no test run — preparation only.
+- The output contract: write a report to
+  `<recorded-round-dir>/<slug>-prep.md` and reply with only the path.
+
+Resolution contends for the same shared caches as builds, so prompt
+one checker at a time and wait for it to settle before prompting the
+next. Once its report is read, the checker stays idle in its pane
+until step 8 needs it.
 
 ## 4. Assign agents by difficulty
 
@@ -209,7 +262,9 @@ package. Foundational or architecturally risky packages get the strongest
 agent — a weak foundation costs every reviewer and every later round.
 Mechanical, well-bounded packages (apply an established pattern, styling
 sweeps, copy changes) go to the cheaper kinds. When unsure, assign up.
-Write-ahead the implementer (`kind` `agent`, `role`
+Checker agents run commands and copy output, so the cheapest kind is
+fine for them; the reviewer-kind rule in step 7 does not apply to
+checkers. Write-ahead the implementer (`kind` `agent`, `role`
 `package-implementer`) and append `created` after a successful start:
 
 ```bash
@@ -243,10 +298,10 @@ The brief must carry:
   convention files (CLAUDE.md / AGENTS.md), glossary, and any design specs —
   tell the agent to read them first.
 - **Write tests, but do not run the heavy build or test suite.** The
-  orchestrator validates serially afterwards. Explain why in the brief:
-  concurrent builds across worktrees fight over shared caches and locks and
-  make the machine unusable, so a parallel round only works if exactly one
-  build runs at a time.
+  package's checker agent validates serially afterwards, one build at
+  a time. Explain why in the brief: concurrent builds across worktrees
+  fight over shared caches and locks and make the machine unusable, so
+  a parallel round only works if exactly one build runs at a time.
 - Commit discipline: Conventional Commits, imperative lowercase subject
   ≤72 chars, no Co-Authored-By trailers or generation watermarks. Commit on
   the package branch. Do not push.
@@ -309,9 +364,11 @@ herdr agent read <name> --source recent-unwrapped --lines 120
 Priorities inside the loop: answer `blocked` agents first (each is
 stalled wall-clock), then act on settled ones — a settled implementer
 gets its candidate recorded, quick checks queued, and a reviewer
-dispatched, a settled reviewer gets its verdict read (step 7) — then check long-`working` ones — an agent whose output
-hasn't changed across several sweeps may be stuck on an unrecognized
-prompt or spinning; read the pane and decide.
+dispatched, a settled reviewer gets its verdict read (step 7), a
+settled checker gets its report read (steps 3, 8, 9) — then check
+long-`working` ones — an agent whose output hasn't changed across
+several sweeps may be stuck on an unrecognized prompt or spinning;
+read the pane and decide.
 Surface progress to the user at transitions that matter (package settled,
 review sent, quick checks passed, merge landed), not on every wake.
 
@@ -402,10 +459,11 @@ caches and locks; and the output contract — write the verdict to a file
 in the round directory and reply with only the path, since pane
 scrollback truncates long replies (step 6).
 
-Reviewers are fleet agents: the same watch loop, wait block, states,
-and traps apply, and a settled reviewer means a verdict file to read.
-Reviews run no builds, so any number of reviewers can work while
-implementers are still working — the one-heavy-build rule is untouched.
+Reviewers and checkers are fleet agents: the same watch loop, wait
+block, states, and traps apply, and a settled reviewer means a
+verdict file to read, a settled checker a report file. Reviews run no
+builds, so any number of reviewers can work while implementers are
+still working — the one-heavy-build rule is untouched.
 
 Reviewer kind: pick it from the review's own difficulty and risk, not
 as a fixed discount off the implementer's. Foundational, concurrent,
@@ -452,33 +510,51 @@ delivers, then get confirmation before merging the remaining packages
 (unless the user already authorized unattended continuation after drops).
 Closing agent sessions is a package completion criterion. A dropped
 package's worktree and branch stay in place for the user to inspect — its
-work exists nowhere else — but its implementer and reviewer sessions close
-at the drop. An accepted package's sessions close immediately once both
-gates have passed and `accepted_sha` is recorded. Shut each agent and
-close the reviewer pane with the shutdown procedure in step 9; the
-package is not concluded until both names are gone from `herdr agent
-list` and the reviewer pane is closed. Merge-target work uses dedicated
-agents instead of keeping package sessions alive.
+work exists nowhere else — but its implementer, checker and reviewer
+sessions close at the drop. An accepted package's sessions close
+immediately once both gates have passed and `accepted_sha` is
+recorded. Shut each agent and close the checker and reviewer panes
+with the shutdown procedure in step 9; the package is not concluded
+until all three names are gone from `herdr agent list` and both the
+checker and reviewer panes are closed. Merge-target work uses
+dedicated agents instead of keeping package sessions alive.
 
 ## 8. Quick-check serially
 
 The quick-check gate waits for no verdict: queue it the moment a
-candidate sha is recorded, **in the package's worktree, one worktree
-at a time** — exactly one heavy build runs at any moment, which is the
-whole reason implementers don't build (step 5). Before and after the
-checks, require `git status --porcelain` to be empty and both
-`git rev-parse HEAD` and `git rev-parse feat/<slug>` to equal the
-recorded `candidate_sha`; this binds the tested tree to the same
-commit the reviewer grades. Run only the package's own quick checks
-(it compiles, its own tests pass) — the repo's full suite runs once on
-the merge target (step 9), where cross-package failures actually show
-up. A transient infrastructure failure (network, a cache lock) is a
-retry on the same candidate, not a new one. A genuine failure's
-verbatim output (not your paraphrase) goes into the combined fix brief
-of step 7; long output is a file-drop (step 5), and any retained fix,
-mechanical or otherwise, is a new candidate for both gates. No changed
-tree reaches the merge without a matching verdict and a green quick
-check on its exact sha.
+candidate sha is recorded. The checks run in the package's worktree
+by `<slug>-check`, the checker started there in step 3 — never in
+your own window. **Exactly one checker may be `working` at any
+moment across the whole round**, package checkers and the merge
+checker (step 9) alike: prompt the next one only after the previous
+one has settled. That is the one-heavy-build rule, the whole reason
+implementers don't build (step 5), and the queue is yours to keep.
+
+The binding stays with you; it is cheap git metadata, not source.
+Before prompting and again after the report arrives, require
+`git status --porcelain` to be empty and both `git rev-parse HEAD`
+and `git rev-parse feat/<slug>` to equal the recorded `candidate_sha`
+in the package worktree; this binds the tested tree to the same
+commit the reviewer grades.
+
+The check brief is a file-drop (step 5) and carries: the worktree
+path and the candidate sha; the package's own quick checks only — it
+compiles, its own tests pass — with the commands from the survey
+report (step 2), never the repo's full suite, which runs once on the
+merge target (step 9), where cross-package failures actually show up;
+the rule that a transient infrastructure failure (network, a cache
+lock) is a retry on the same candidate, not a new one; no code
+changes and no commits; and the output contract — write the result
+to `<recorded-round-dir>/<slug>-check-<candidate_sha>.md` with the
+exact sha tested, pass or fail, and the verbatim command output, and
+reply with only the path.
+
+Accept a report only if it names the recorded candidate sha. A
+genuine failure's verbatim output — the report file's path, not your
+paraphrase — goes into the combined fix brief of step 7, and any
+retained fix, mechanical or otherwise, is a new candidate for both
+gates. No changed tree reaches the merge without a matching verdict
+and a green check report on its exact sha.
 
 ## 9. Merge the round locally
 
@@ -498,9 +574,22 @@ root pane (`kind` `pane`, `role` `container-root-pane`):
 herdr tab create --workspace <orchestrator-workspace-id> --cwd <main-repo-path> --label <round-slug>-merge --no-focus
 ```
 
-Record the merge tab id and its root pane id. Every merge fixer and
-merge reviewer splits inside this tab; never use `--current` here, and
-never close this tab's root pane — `herdr tab close` reclaims it.
+Record the merge tab id and its root pane id. Then split a checker
+pane off that root pane, write-ahead the pane and the agent (`role`
+`merge-checker`, `kind` `pane` / `agent`, `cleanup_policy`
+`close-aux`), and start the **merge checker** `<round-slug>-check`
+there with cwd `<main-repo-path>`:
+
+```bash
+herdr pane split <merge-root-pane-id> --cwd <main-repo-path> --no-focus
+herdr agent start <round-slug>-check --kind <kind> --pane <new-pane-id>
+```
+
+Reuse it for every suite run of the merge phase; it is shut with the
+shutdown procedure below before the merge tab closes. Every merge
+fixer and merge reviewer splits inside this tab too; never use
+`--current` here, and never close this tab's root pane — `herdr tab
+close` reclaims it.
 
 1. Re-check the main repo: the tree still clean (`git status`) and HEAD
    still on the branch recorded in step 2 (`git rev-parse --abbrev-ref
@@ -544,22 +633,30 @@ never close this tab's root pane — `herdr tab close` reclaims it.
    on the conflict resolution and combined behavior. Accept only a
    verdict naming that candidate sha. Start the next merge only after
    this review passes and the pair is shut (shutdown procedure below).
-3. Run the repo's full build and test suite on the merge target — the
-   round's heavy build, and the first time the packages meet, so
-   cross-package failures land here. On failure, record
-   `pre_fix_sha=$(git rev-parse HEAD)` and send the verbatim output by
-   file-drop to one dedicated fixer rooted in the main checkout (split
-   and write-ahead as in item 2 if needed). Once it settles, require a
-   clean tree and a new commit, record
-   `candidate_sha=$(git rev-parse HEAD)`, then dispatch
+3. Prompt `<round-slug>-check` to run the repo's full build and test
+   suite on the merge target — the round's heavy build, and the first
+   time the packages meet, so cross-package failures land here. Its
+   brief is a file-drop and carries: the merge target branch and its
+   current sha, the full build and test commands (survey report,
+   step 2), no code changes and no commits, and the output contract —
+   write the report to
+   `<recorded-round-dir>/<round-slug>-suite-<sha>.md` with the sha,
+   pass or fail, and the verbatim output, and reply with only the
+   path. While it runs, the checker is the one agent working in the
+   main checkout: no fixer is live at the same time and you run no
+   git there. On failure, record `pre_fix_sha=$(git rev-parse HEAD)`
+   and send the report path by file-drop to one dedicated fixer rooted
+   in the main checkout (split and write-ahead as in item 2 if
+   needed). Once it settles, require a clean tree and a new commit,
+   record `candidate_sha=$(git rev-parse HEAD)`, then dispatch
    `<slug>-merge-review` in another merge-tab pane (write-ahead as in
    item 2) to grade the exact `git diff <pre_fix_sha> <candidate_sha>`
-   read-only. Accept only a verdict naming that candidate sha and
-   re-run the suite after the pair is shut (shutdown procedure below).
-   Handle one fixer/reviewer pair at a time. If a
-   fixer is blocked on a user decision, or the failure cannot be
-   resolved this round, persist the failing output, leave the
-   merge-target red-suite fix state untouched, and go to step 10.
+   read-only. Accept only a verdict naming that candidate sha and,
+   after the pair is shut (shutdown procedure below), prompt the merge
+   checker again on the new sha. Handle one fixer/reviewer pair at a
+   time. If a fixer is blocked on a user decision, or the failure
+   cannot be resolved this round, persist the failing output, leave
+   the merge-target red-suite fix state untouched, and go to step 10.
 
 Throughout, the main checkout changes hands whole: exactly one agent
 works in it at a time, and while one does, run no git there yourself —
@@ -576,9 +673,10 @@ example `herdr pane run <pane-id> /quit` for Grok or
 `herdr pane run <pane-id> /exit` for agents that use `/exit`; use
 `herdr agent send-keys <name> ctrl+c` only as an interrupt fallback after
 reading the screen. Confirm the name is gone from `herdr agent list`.
-Agent exit is not the end state for an auxiliary pane (package reviewer,
-merge fixer, merge reviewer): once required output is persisted, verify
-an idle shell with `herdr pane process-info --pane <pane-id>`, confirm
+Agent exit is not the end state for an auxiliary pane (package checker,
+package reviewer, merge fixer, merge reviewer, merge checker): once
+required output is persisted, verify an idle shell with
+`herdr pane process-info --pane <pane-id>`, confirm
 the recorded container root pane id still exists in the same
 workspace/tab (check that id, not a pane count), then
 `herdr pane close <pane-id>`. Never close a package workspace root pane
@@ -623,11 +721,12 @@ authority.
    `git status --porcelain` is empty, the branch tip equals the
    recorded `accepted_sha`,
    `git merge-base --is-ancestor <accepted_sha> <merge-target>`
-   passes, the package agent is gone, and every auxiliary pane is
-   already closed. Leave the container root pane in place. Enumerate
-   the workspace's remaining panes (the recorded root pane included)
-   and confirm via `herdr pane process-info --pane <pane-id>` that
-   each holds only an idle shell — herdr shuts down the workspace's
+   passes, the package agent, its checker and its reviewer are gone,
+   and every auxiliary pane is already closed. Leave the container
+   root pane in place. Enumerate the workspace's remaining panes (the
+   recorded root pane included) and confirm via
+   `herdr pane process-info --pane <pane-id>` that each holds only an
+   idle shell — herdr shuts down the workspace's
    terminal runtimes before a forced removal, so a vanished agent
    does not make `--force` safe. Fail closed on any non-shell occupant,
    user takeover, or unidentifiable state; retain and report. Only
@@ -668,13 +767,16 @@ authority.
    branch next is the user's call.
 
 Round invariants: implementation — conflict resolution included — belongs
-to the agents and diff-grading to the reviewers; review, quick checks,
-and merge bind to the same exact clean commit; a blocking finding is
-cleared by a fix or a reviewer verdict, never by orchestrator
-reclassification, and correction counters only go up; exactly one heavy
-build runs at a time; the round ends on a local branch and publishing
-stays with the user; a worktree holding dirty or unmerged work stays
-in place; a finished agent session closes before its package or merge
-task is considered done; a container root pane is never closed
-explicitly (step 9); resources except the round directory are
-write-ahead (step 3) and only manifest-confirmed ones are reclaimed.
+to the agents and diff-grading to the reviewers; builds, tests and
+worktree preparation run in checker agents, and codebase surveys in a
+survey agent, never in the orchestrator's window; review, quick
+checks, and merge bind to the same exact clean commit; a blocking
+finding is cleared by a fix or a reviewer verdict, never by
+orchestrator reclassification, and correction counters only go up;
+exactly one heavy build runs at a time; the round ends on a local
+branch and publishing stays with the user; a worktree holding dirty
+or unmerged work stays in place; a finished agent session closes
+before its package or merge task is considered done; a container root
+pane is never closed explicitly (step 9); resources except the round
+directory are write-ahead (step 3) and only manifest-confirmed ones
+are reclaimed.
