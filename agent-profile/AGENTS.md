@@ -17,7 +17,7 @@
 
 - When an approach hits a wall, find the cause before switching approaches.
 - Keep changes to what the request needs. Report pre-existing bugs and unrelated behavior as follow-ups rather than fixing them, unless the requested behavior cannot work otherwise. Raise refactors, behavior changes, and substantial test expansion before widening scope.
-- Remove code, parameters, and helpers made obsolete by the current change, and update their callers, leaving no relocation breadcrumbs such as `// moved to X`.
+- Remove code made obsolete by the change and update its callers.
 - Make targeted edits. Rewrite a whole file only when it is short or most of it is changing.
 - Prefer established lightweight dependencies. Ask before adding niche, unusual, or heavyweight dependencies.
 
