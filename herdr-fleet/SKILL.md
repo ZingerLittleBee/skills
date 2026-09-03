@@ -13,11 +13,10 @@ dispatch reviewers and checkers, and adjudicate their results. You never
 implement, and you never pull package diffs into your own window —
 source lives in the agents' worktrees and gets graded by dedicated
 reviewer agents in their own panes (step 7), and builds and tests run
-in dedicated
-checker agents (steps 3, 8, 9), never in the orchestrator's window.
-That split is what makes the round safe: your judgment on package N
-stays sharp after babysitting packages A through M, and no two
-writers ever share a checkout.
+in dedicated checker agents (steps 3, 8, 9), never in the
+orchestrator's window. That split is what makes the round safe: your
+judgment on package N stays sharp after babysitting packages A
+through M, and no two writers ever share a checkout.
 
 ## 1. Preconditions
 
@@ -43,6 +42,21 @@ Agent states: `working` (leave it alone), `blocked` (it needs input),
 `idle`/`done` (turn finished), `unknown` (present but unclassified — not
 proof of completion). A package is **settled** when its agent reads `idle`
 or `done`; an `unknown` agent must be read before it counts as anything.
+
+**Turn discipline.** The round runs unattended and the user is not
+watching in real time, so end a turn only at these points: the plan
+and worktree-disposition confirmation (step 2), the post-drop
+confirmation (step 7), an agent question that needs the user's
+authority (step 6), a merge-target suite failure the round cannot
+resolve (step 9), and the final report (step 10). Nothing else ends a
+turn — not "waiting for the agents", not a long context, not a phase
+boundary. Before ending any turn, check the last paragraph: if it is
+a plan, a list of next steps, or a promise about work not yet done
+("next I'll merge…", "then cleanup…"), do that work now with tool
+calls, retrying after errors and gathering missing information
+yourself. Do not stop for permission on work the round already
+covers; the user's confirmation at step 2 (or their instruction to
+run unattended) is the authority for steps 3 through 10.
 
 ## 2. Package the work
 
@@ -354,8 +368,13 @@ verified against a live fleet:
 
 Keep a per-package status board — agent state, last state change,
 `candidate_sha`, `accepted_sha`, correction cycles used, quick-check
-state, next action — and update it on every wake. When an agent changes state,
-read its recent output before deciding anything:
+state, next action — as a file at `<recorded-round-dir>/status.md`
+(the round directory recorded in step 3), rewritten on every wake, so
+it survives context compaction. After a compaction, recover the loop
+from that file, the manifest, and a fresh `herdr agent list` sweep,
+and continue the round rather than ending the turn; a long session is
+not a reason to stop. When an agent changes state, read its recent
+output before deciding anything:
 
 ```bash
 herdr agent read <name> --source recent-unwrapped --lines 120
@@ -385,6 +404,14 @@ Known traps and how to handle them:
   `herdr pane send-keys <pane-id> enter`; `agent prompt` rejects a blocked
   agent with `agent_blocked`. A question that needs new authority or a user
   decision goes to the user instead of being answered on their behalf.
+  When that happens, first do everything on this wake that does not
+  depend on the answer — answer the other blocked agents, record
+  settled candidates, queue checkers, dispatch reviewers — then end
+  the turn with the question and the current status board rather than
+  blocking on `herdr agent wait` again. The fleet keeps working in
+  herdr while the user answers; on the reply, resume with a
+  `herdr agent list` sweep. Do not answer on the user's behalf, and do
+  not hold the question for hours behind another wait.
 - **Alternate-screen output is unrecoverable.** Agents that render on the
   terminal's alternate screen never feed scrolled-off rows into herdr's
   scrollback, so raising `--lines` cannot recover a long finished reply.
@@ -779,4 +806,5 @@ or unmerged work stays in place; a finished agent session closes
 before its package or merge task is considered done; a container root
 pane is never closed explicitly (step 9); resources except the round
 directory are write-ahead (step 3) and only manifest-confirmed ones
-are reclaimed.
+are reclaimed; the orchestrator ends a turn only at the points
+section 1 names, and never on a plan or a promise.
