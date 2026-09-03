@@ -23,7 +23,7 @@
 
 ## Tooling and Safety
 
-- Use the repository's documented task runner. Prefer suitable `make` targets when a `Makefile` provides them.
+- Run tests, builds, and checks through the repository's documented task runner rather than the underlying commands directly.
 - Request every tool call that does not depend on another call's result in the same response, rather than one per turn.
 - Use `gh` for GitHub operations when available. Otherwise report the missing capability; do not add repository-local GitHub tooling or configuration.
 - Treat `git status` and `git diff` as read-only context. Preserve unrelated or pre-existing changes and never assume they are yours.
