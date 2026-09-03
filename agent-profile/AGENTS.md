@@ -5,10 +5,6 @@
 - Respond in Simplified Chinese unless the user explicitly requests another language.
 - Everything committed to a repository is in English: identifiers, comments, docstrings, TODOs, commit messages, PR and issue text, documentation, and agent-instruction files.
 
-## Instruction Scope
-
-- Project instructions such as `AGENTS.md` and `CLAUDE.md` apply; rules closer to the target file override broader project and user-level rules.
-
 ## Task Scope and Delivery
 
 - Match the requested task type. Reviews, diagnoses, explanations, and thinking out loud call for an assessment; apply a fix only once one is requested.
