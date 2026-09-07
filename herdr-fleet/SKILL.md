@@ -20,8 +20,17 @@ through M, and no two writers ever share a checkout.
 
 ## 1. Preconditions
 
-- Confirm you are inside a herdr-managed pane: `test "${HERDR_ENV:-}" = 1`.
-  If not, say so and stop — do not drive herdr from outside herdr.
+- Confirm the herdr server is reachable: `herdr status server` must
+  report `status: running`. The orchestrator itself need not run
+  inside a herdr pane — the CLI reaches the server over its socket
+  either way, and every target in this flow is an explicit id — but
+  every agent it drives does. If the check fails, say so and stop.
+- Resolve the **orchestrator workspace**, the workspace that hosts the
+  round's own tabs (the survey fallback in step 2, the merge tab in
+  step 9). Inside herdr (`test "${HERDR_ENV:-}" = 1`) it is
+  `$HERDR_WORKSPACE_ID`; it belongs to the user and the round never
+  closes it. Outside herdr no workspace is implied, so the round
+  creates one of its own in step 2 and closes it in step 10.
 - The main repo's working tree must be clean (`git status`); surface a dirty
   tree instead of working around it.
 - Check `herdr integration status`: every agent kind you plan to
@@ -64,10 +73,11 @@ Do not read the codebase yourself to slice the work. Dispatch a
 read-only **survey agent** first — the host's own subagent facility
 if it has one (an Explore-style read-only agent), otherwise a herdr
 agent `<round-slug>-survey` started in a new tab in the orchestrator
-workspace (pick the round-slug, below, before starting it):
+workspace (pick the round-slug and record the orchestrator workspace
+id, both below, before starting it):
 
 ```bash
-herdr tab create --workspace "$HERDR_WORKSPACE_ID" --cwd <main-repo-path> --label <round-slug>-survey --no-focus
+herdr tab create --workspace <orchestrator-workspace-id> --cwd <main-repo-path> --label <round-slug>-survey --no-focus
 herdr agent start <round-slug>-survey --kind <kind> --pane <root-pane-id>
 ```
 
@@ -79,8 +89,9 @@ dependency-resolution command, any large ignored build artifacts a
 worktree will need, and the project's build and per-package test
 commands, which feed steps 3 and 8. Package from that report and
 adjudicate; do not re-derive the survey by reading code. If the herdr
-fallback is used it is the round's only pre-ledger resource (the
-round directory does not exist yet): its report is written to
+fallback is used it is a pre-ledger resource (the round directory
+does not exist yet; a round-created workspace, below, is the only
+other one): its report is written to
 `"${TMPDIR:?}/herdr-fleet-<round-slug>-survey.md"`, the agent is shut
 and its tab closed (step 9 shutdown procedure) before step 3 begins,
 and the report file is moved into the round directory once that
@@ -127,10 +138,24 @@ current branch:
   round's base — every worktree gets pinned to it (step 3) — and the
   path is what worktree creation (step 3) and conflict briefs (step 9)
   reference; your shell's cwd hours from now is not a substitute.
-- Record the orchestrator workspace id from
-  `printf '%s\n' "$HERDR_WORKSPACE_ID"`. That recorded orchestrator
-  workspace id is what later binds the merge tab to this workspace
-  (step 9); the globally active workspace is not a substitute.
+- Record the orchestrator workspace id (step 1). Inside herdr, take
+  it from `printf '%s\n' "$HERDR_WORKSPACE_ID"`. Outside herdr,
+  create the round's workspace now and read
+  `.result.workspace.workspace_id` from the JSON:
+
+  ```bash
+  herdr workspace create --cwd <main-repo-path> --label <round-slug> --no-focus
+  ```
+
+  That recorded orchestrator workspace id is what later binds the
+  survey fallback tab (above) and the merge tab (step 9) to this
+  workspace; the globally active workspace is not a substitute. A
+  round-created workspace is a pre-ledger resource like the survey
+  fallback: append its `created` event (`kind` `workspace`, `role`
+  `round-workspace`, `cleanup_policy` `close-container`) right after
+  the round-dir event in step 3, and close it in step 10. Its
+  initial tab and root pane stay untouched; the round only adds tabs
+  to it.
 - If the current branch is shared and long-lived (the default branch,
   `develop`, `release/*`), or HEAD is detached (`--abbrev-ref` prints
   the literal `HEAD`), the round must not land on it directly: the
@@ -169,12 +194,13 @@ still fails, and immediately append `created` for the round
 directory (`kind` `dir`, `role` `round-dir`, `cleanup_policy`
 `delete-on-success`) with that resolved absolute path in `selector`
 and `observed` before doing anything else — step 5 reuses this
-recorded path, never a second `$TMPDIR` resolve. If a herdr survey
-agent left a report in `$TMPDIR` (step 2), move it into the round
-directory now. Mint a `round_id` unique to this invocation;
-ownership is proved by `round_id`, not by round-slug or label. `seq`
-increases monotonically so an auditor can detect a truncated or
-misordered append.
+recorded path, never a second `$TMPDIR` resolve. Then, if the round
+created its own workspace (step 2), append its `created` event with
+the recorded workspace id, and if a herdr survey agent left a report
+in `$TMPDIR` (step 2), move it into the round directory now. Mint a
+`round_id` unique to this invocation; ownership is proved by
+`round_id`, not by round-slug or label. `seq` increases monotonically
+so an auditor can detect a truncated or misordered append.
 
 A mutable row cannot be write-ahead, so this is an event log: write an
 `intent` event and flush it before each create command; append a
@@ -182,8 +208,10 @@ A mutable row cannot be write-ahead, so this is an event log: write an
 anything else; append a `state` event on disposition. Never rewrite an
 earlier line. Every later resource follows that write-ahead, including
 every agent, pane, tab, branch, container root pane, and worktree
-parent directory; only the round directory is created first so the
-ledger can exist, and an unrecorded resource cannot be reclaimed.
+parent directory; only the round directory (so the ledger can exist)
+and the two pre-ledger resources of step 2 (a round-created
+workspace, a survey fallback tab) precede their own events, and an
+unrecorded resource cannot be reclaimed.
 
 Record envelope:
 
@@ -195,8 +223,8 @@ Record envelope:
   "seq": 1,
   "event": "intent | created | state",
   "resource_key": "package/<slug>/worktree",
-  "kind": "worktree | tab | pane | agent | branch | dir",
-  "role": "package-container | package-implementer | package-reviewer | package-checker | merge-container | merge-fixer | merge-reviewer | merge-checker | package-branch | round-dir | merge-target | worktree-parent-directory | container-root-pane",
+  "kind": "worktree | workspace | tab | pane | agent | branch | dir",
+  "role": "package-container | package-implementer | package-reviewer | package-checker | merge-container | merge-fixer | merge-reviewer | merge-checker | package-branch | round-dir | round-workspace | merge-target | worktree-parent-directory | container-root-pane",
   "parent_key": "<logical parent resource_key or null>",
   "cleanup_policy": "remove-when-merged | close-aux | close-container | retain-if-unmerged | delete-on-success | report-only",
   "selector": {},
@@ -773,10 +801,16 @@ authority.
    never actually merged. Either way investigate; `-D` answers neither.
 3. Account for the rest of this round's residue from the manifest —
    round directory, package branches, any merge-target branch this
-   round created, the merge tab and its root pane, and worktree parent
-   directories. Leave the merge target in place; it is the round's
-   output. Append a `state` event per disposition for every resource
-   except the round directory, while the manifest still exists.
+   round created, the merge tab and its root pane, any workspace this
+   round created, and worktree parent directories. A `round-workspace`
+   event means the round made the workspace (step 2): once the merge
+   tab is closed and every remaining pane in it holds only an idle
+   shell (`herdr pane process-info`), `herdr workspace close <id>`.
+   A workspace inherited from `$HERDR_WORKSPACE_ID` has no such event
+   and is the user's; never close it. Leave the merge target in
+   place; it is the round's output. Append a `state` event per
+   disposition for every resource except the round directory, while
+   the manifest still exists.
 4. Final report: the merge target branch, then per package — branch,
    correction cycles used, quick-check evidence — plus anything
    dropped. Build every item except the round directory from the
@@ -804,7 +838,9 @@ exactly one heavy build runs at a time; the round ends on a local
 branch and publishing stays with the user; a worktree holding dirty
 or unmerged work stays in place; a finished agent session closes
 before its package or merge task is considered done; a container root
-pane is never closed explicitly (step 9); resources except the round
-directory are write-ahead (step 3) and only manifest-confirmed ones
-are reclaimed; the orchestrator ends a turn only at the points
-section 1 names, and never on a plan or a promise.
+pane is never closed explicitly (step 9) and a workspace the round did
+not create is never closed at all (step 10); resources except the
+round directory and the two pre-ledger ones are write-ahead (step 3)
+and only manifest-confirmed ones are reclaimed; the orchestrator ends
+a turn only at the points section 1 names, and never on a plan or a
+promise.
