@@ -514,6 +514,40 @@ caches and locks; and the output contract — write the verdict to a file
 in the round directory and reply with only the path, since pane
 scrollback truncates long replies (step 6).
 
+**Correlated failures.** Independent reviewers can share the same wrong
+assumption; more agreeing reviews do not necessarily increase reliability
+in proportion to their number. Every review brief must require this:
+
+> Identify one critical assumption shared by the implementation and its
+> tests that has not yet been validated by external evidence, and design
+> a check that could falsify it.
+
+Include the following in the verdict, even when there are no findings:
+
+- The assumption, the implementation and test locations that rely on it,
+  and the consequence if it is false.
+- The external evidence missing or inspected, with sources and their
+  applicability. Evidence must be independent of the implementation and
+  its test expectations, such as a version-matched provider contract or
+  an observed real-system response. Matching mocks, copied fixtures, and
+  reviewer agreement do not validate the assumption.
+- A concrete falsification check: setup or input, the independent source
+  of truth, and the observable result that would disprove the assumption.
+  Record whether the check is designed only or executed; cite results
+  when available, otherwise mark it **Not verified** and state what is
+  needed to run it. Designing a check does not validate the assumption.
+
+If no such assumption is found, document the candidates examined and the
+external evidence that validates them, or why none applies; do not invent
+an assumption to fill the report. Return an incomplete report to the
+reviewer for completion. Classify any resulting finding using the
+blocking criteria above; missing evidence alone is not a proven defect.
+Reviewers retain the read-only and no-build constraints. Checks requiring
+execution go through a checker within the round's authorized scope and
+serial queue; the design itself grants no additional execution authority.
+Re-grades revisit this analysis for the new candidate and may carry it
+forward only with an explicit explanation of why it remains applicable.
+
 Reviewers and checkers are fleet agents: the same watch loop, wait
 block, states, and traps apply, and a settled reviewer means a
 verdict file to read, a settled checker a report file. Reviews run no
@@ -645,6 +679,9 @@ shutdown procedure below before the merge tab closes. Every merge
 fixer and merge reviewer splits inside this tab too; never use
 `--current` here, and never close this tab's root pane — `herdr tab
 close` reclaims it.
+
+Every merge-review brief and verdict also carries the correlated-failure
+requirement from step 7, applied to the combined behavior under review.
 
 1. Re-check the main repo: the tree still clean (`git status`) and HEAD
    still on the branch recorded in step 2 (`git rev-parse --abbrev-ref
