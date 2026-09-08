@@ -13,7 +13,9 @@ the legacy command.
 
 For existing `codex_args`, apply the model and reasoning requirements in
 [Herdr preflight](SKILL.md#herdr-preflight), preserving unrelated arguments.
-Select the required GUI tool by `target_kind` using the table in Herdr preflight.
+Select the required GUI tool using the routing table in Herdr preflight. Web
+configs without `web_driver` use `ego-browser`; set `web_driver: agent-browser`
+explicitly to retain that driver.
 The tester prompt enforces that boundary and escalates if the tool is unavailable.
 
 1. Scaffold both files from the [templates below](#templates) — write them
@@ -23,7 +25,7 @@ The tester prompt enforces that boundary and escalates if the tool is unavailabl
    `tauri.conf.json` / `Cargo.toml` / vite / next config, `CLAUDE.md`,
    `AGENTS.md` — and edit the two files with real values:
    - `config.yaml`: real `build_cmd`, `target_kind` (`web` / `desktop` /
-     `mobile`), `target_desc`, `codex_args`, `test_timeout_ms`, `max_rounds`.
+     `mobile`), `web_driver`, `target_desc`, `codex_args`, `test_timeout_ms`, `max_rounds`.
    - `project.md`: overview, structure, how to launch, how to test, gotchas.
 3. **Show the user the filled-in `config.yaml` and confirm** `build_cmd` and
    `codex_args` before continuing.
@@ -77,7 +79,8 @@ output path. Treat the Tauri snippet as an illustration, not a default.
 ```yaml
 # testloop project config
 repo_dir: /absolute/path/to/project  # project root; must be absolute
-target_kind: web                 # web: agent-browser; desktop/mobile: @Computer-Use
+target_kind: web                 # web | desktop | mobile
+web_driver: ego-browser          # web only: ego-browser (default) | agent-browser
 target_desc: |
   Describe the app under test so Codex knows what it is driving.
   e.g. A web app served at http://localhost:3000; main screen is ...
@@ -123,6 +126,9 @@ TODO: how the app is built and started for testing.
 
 ## How to run tests
 TODO: existing test commands / how testing works here.
+
+## Web test initial state
+TODO: required login state, test account role, and test data reset steps; omit for non-web apps.
 
 ## Notes
 TODO: gotchas, prerequisites, things to watch out for.
