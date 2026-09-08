@@ -19,6 +19,7 @@ Add `-g` to install globally (user-level) and `-y` to skip confirmation prompts.
 
 | Skill | Description |
 |---|---|
+| [`design-parity`](design-parity/) | Measure how faithfully a native app reproduces its HTML design mockup and interactions: tokens, layout arithmetic and clamps, hit-tested interactions, and screenshots against references, each finding with expected, actual, and method. Runs on a per-project `.design-parity/project.md` profile. Invoke with `/design-parity [scope]`. |
 | [`dispatch-tickets`](dispatch-tickets/) | Run a set of tracker tickets to completion in one session: a dispatcher main agent spawns a fresh implementer subagent per ticket in dependency order, verifies each result, and closes tickets; simple tickets go to a cheaper model. Invoke with `/dispatch-tickets #N #N …` or `parent=#N`. |
 | [`publish-release`](publish-release/) | The release convention: unreleased work accumulates under CHANGELOG's `[Unreleased]` heading, and one `make publish` (options as make variables: `VERSION=`, `DRY_RUN=1`, `YES=1`) cuts it — renaming the section, updating each declared version file, regenerating the derived ones by command, tagging, and releasing via GitHub Actions or a local build. Prints the whole plan and asks before mutating anything. |
 | [`herdr-fleet`](herdr-fleet/) | Run one round of parallel implementation across multiple CLI coding agents (claude, codex, droid, grok, …) in herdr-managed git worktrees: the orchestrator packages the backlog, assigns each package to an agent kind by difficulty, watches progress, grades fixed commits with Herdr reviewer agents, validates serially, merges accepted packages onto one local branch, and removes only clean merged worktrees. Invoke with `/herdr-fleet`. |
@@ -32,6 +33,7 @@ Add `-g` to install globally (user-level) and `-y` to skip confirmation prompts.
 ### Examples
 
 ```bash
+npx skills add ZingerLittleBee/skills@design-parity
 npx skills add ZingerLittleBee/skills@dispatch-tickets
 npx skills add ZingerLittleBee/skills@herdr-fleet
 npx skills add ZingerLittleBee/skills@implement-codex
