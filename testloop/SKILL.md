@@ -18,8 +18,8 @@ The split of responsibilities:
   unsandboxed host access (writing `/Applications`, `open`, `ps`), which you
   have via Bash.
 - **Codex tester:** the **hands** — Herdr runs it in a sibling pane. It drives the
-  **already-running** app via computer use to execute your test plan and writes
-  the results. It never touches the lifecycle or project source.
+  **already-running** app exclusively via `@Computer-Use` to execute your test
+  plan and writes the results. It never touches the lifecycle or project source.
 
 When the invocation includes an optional **scope** (for example, `login flow`
 or `settings sync`), focus the run there. With no scope, test broadly.
@@ -61,7 +61,17 @@ Run `herdr integration status` and require `codex` to read `current`; lifecycle
 waiting is not reliable without it. If it is missing or outdated, show the exact
 status and ask before running `herdr integration install codex`, then re-check.
 Stop if the environment, commands, or integration are not ready. Verify
-`codex_args` against the current interactive `codex --help`.
+`codex_args` against the current interactive `codex --help`. Require
+`-m gpt-6-astra` and `-c model_reasoning_effort=low`; update older model and
+reasoning entries in existing configs, removing conflicting overrides while
+preserving unrelated arguments. Every tester round uses these settings.
+
+The tester must use `@Computer-Use` for all GUI observation and interaction,
+following that capability's supplied instructions. If it is unavailable or
+cannot control the target, the tester must escalate through `decision.json`
+instead of switching automation tools. This restriction applies to the tester's
+GUI work; the driver's lifecycle commands and the tester's permitted artifact
+reads/writes still use shell/file tools.
 
 ## The loop
 
@@ -153,14 +163,15 @@ Pass `codex_args` only after `--`:
 
 ```bash
 herdr agent start <tester-name> --kind codex --pane <new-pane-id> --timeout 120000 -- <codex_args>
-herdr agent prompt <tester-name> "Read <absolute-repo-dir>/.testloop/tester-prompt.txt and execute it." \
+herdr agent prompt <tester-name> "Use @Computer-Use. Read <absolute-repo-dir>/.testloop/tester-prompt.txt and execute it." \
   --wait --until working --until blocked --until idle --until done --timeout 10000
 ```
 
-This is a **file-drop**: keep the full prompt in the file and send only its
-absolute path, so long plans cannot be mangled by terminal paste or shell
-argument handling. Expand `codex_args` in order as separate arguments. The
-short `--wait` makes submission observable; it returns on the first recognized
+This is a **file-drop**: keep the full prompt in the file and send only the
+`@Computer-Use` instruction and its absolute path, so long plans cannot be mangled
+by terminal paste or shell argument handling. Expand `codex_args` in order as
+separate arguments. The short `--wait` makes submission observable; it returns
+on the first recognized
 post-submission state and does not wait for the test turn to finish.
 
 If `agent start` returns `agent_not_ready`, do not create another pane or call
@@ -348,11 +359,19 @@ relative `.testloop/` paths would make it read the plan or write results in the
 wrong place — and the loop would then wrongly conclude Codex produced nothing.
 
 ```text
-You are executing a test plan by driving an app via computer use.
+You are executing a test plan by driving an app exclusively via @Computer-Use.
 App under test (<target_kind>): <target_desc>
 
 Project profile (background context):
 <contents of .testloop/project.md>
+
+Use only @Computer-Use for all GUI observation and interaction, following its
+supplied instructions. Do not substitute other browser/desktop automation,
+shell-based GUI control, or direct app APIs. Shell/file tools are permitted only
+to read the test instructions and write the allowed result or escalation files.
+If @Computer-Use is unavailable or cannot control the target, write decision.json
+using the escalation format below, describe the blocker, and stop. Do not mark
+unexecuted steps PASS or FAIL.
 
 The app is ALREADY built, installed, and running (it may be behind other
 windows). Do NOT build,

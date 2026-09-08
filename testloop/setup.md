@@ -11,6 +11,11 @@ flags, and add `test_timeout_ms`. Verify the result against `codex --help`, then
 show the migrated tester settings to the user for confirmation. Never execute
 the legacy command.
 
+For existing `codex_args`, apply the model and reasoning requirements in
+[Herdr preflight](SKILL.md#herdr-preflight), preserving unrelated arguments.
+The tester requires `@Computer-Use` for GUI work; its prompt enforces that
+boundary and escalates if the capability is unavailable.
+
 1. Scaffold both files from the [templates below](#templates) — write them
    verbatim, then replace the placeholders. Create the dir first:
    `mkdir -p .testloop`.
@@ -88,9 +93,9 @@ codex_args:
   - --approve-for-me
   - --no-alt-screen
   - -m
-  - gpt-5.6-terra
+  - gpt-6-astra
   - -c
-  - model_reasoning_effort=medium
+  - model_reasoning_effort=low
 
 # Wall-clock deadline for one tester prompt. The Herdr watch loop wakes on state
 # changes and at least every 60 seconds; reaching this deadline is an operational
