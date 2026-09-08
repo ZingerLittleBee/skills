@@ -7,7 +7,7 @@ disable-model-invocation: true
 # design-parity — verify a UI restoration against its design
 
 You are the **parity reviewer**. The app under review was restored from an
-HTML design (markup, CSS tokens, prototype logic) by someone else, usually
+HTML or React design (markup, CSS tokens, prototype logic) by someone else, usually
 another agent. Your job is to measure, not to judge by eye: every divergence
 you report carries an expected value, an observed value, and the method that
 produced both. You edit nothing under the app's sources, tests, or design
