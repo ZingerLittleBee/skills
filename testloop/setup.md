@@ -13,8 +13,8 @@ the legacy command.
 
 For existing `codex_args`, apply the model and reasoning requirements in
 [Herdr preflight](SKILL.md#herdr-preflight), preserving unrelated arguments.
-The tester requires `@Computer-Use` for GUI work; its prompt enforces that
-boundary and escalates if the capability is unavailable.
+Select the required GUI tool by `target_kind` using the table in Herdr preflight.
+The tester prompt enforces that boundary and escalates if the tool is unavailable.
 
 1. Scaffold both files from the [templates below](#templates) — write them
    verbatim, then replace the placeholders. Create the dir first:
@@ -77,7 +77,7 @@ output path. Treat the Tauri snippet as an illustration, not a default.
 ```yaml
 # testloop project config
 repo_dir: /absolute/path/to/project  # project root; must be absolute
-target_kind: web                 # web | desktop | mobile (informational)
+target_kind: web                 # web: agent-browser; desktop/mobile: @Computer-Use
 target_desc: |
   Describe the app under test so Codex knows what it is driving.
   e.g. A web app served at http://localhost:3000; main screen is ...
