@@ -1,6 +1,6 @@
 ---
 name: design-parity
-description: "Measure how faithfully a native app reproduces its HTML design mockup and its interactions, layer by layer, and report every divergence with evidence."
+description: "Measure how faithfully an app, native or web, reproduces its HTML or React design mockup and its interactions, layer by layer, and report every divergence with evidence."
 disable-model-invocation: true
 ---
 
@@ -111,15 +111,18 @@ it, the window itself) is a second.
 
 ## Layer 4: visual
 
-Only when reference screenshots exist. For each one, put the app in the same
-state (theme, window size, open panels, selected tab), take an app screenshot,
-and compare side by side after matching scale; app screenshots are usually at
-backing scale on Retina.
+Only when reference screenshots exist, or when the prototype renders in the
+same runtime as the app and can be captured on demand. For each reference,
+put the app in the same state (theme, viewport or window size, open panels,
+selected tab), take an app screenshot, and compare side by side after
+matching scale; the profile says what scale each side captures at.
 
-Text is never pixel-diffed: the prototype's fonts are not the native ones.
-Compare layout boxes, fills, hairlines, radii, and shadows. Work through the
-checklist and report each difference with the region's coordinates and the
-measured values in both images:
+When the two sides render in different runtimes (a browser prototype against
+a native app), text is never pixel-diffed: the fonts differ. When both render
+in a browser with the same fonts, region pixel diffs are valid, text
+included. Either way, compare layout boxes, fills, hairlines, radii, and
+shadows. Work through the checklist and report each difference with the
+region's coordinates and the measured values in both images:
 
 - Column widths, header height, strip heights, rail width.
 - Padding and gaps inside rows, tabs, panel sections.

@@ -33,10 +33,13 @@ are probe failures.
    !.design-parity/reports/
    ```
 
-[examples/amux-project.md](examples/amux-project.md) is a filled profile for
-a SwiftUI app with a JSON-line debug harness. Use it to calibrate the level of
-detail: every operation named, every argument format shown, every pitfall
-one line.
+Two filled profiles calibrate the level of detail: every operation named,
+every argument format shown, every pitfall one line.
+
+- [examples/amux-project.md](examples/amux-project.md): a SwiftUI app with a
+  JSON-line debug harness, prototype not renderable locally.
+- [examples/react-project.md](examples/react-project.md): a React app driven
+  through a browser, prototype renderable alongside it.
 
 ## Template
 
