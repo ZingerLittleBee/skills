@@ -852,7 +852,29 @@ authority.
    correction cycles used, quick-check evidence — plus anything
    dropped. Build every item except the round directory from the
    still-live manifest as one of `removed`, `retained(<reason>)`,
-   or `cleanup_failed(<error>)`. Then delete the round directory last,
+   or `cleanup_failed(<error>)`. Archive the round directory before
+   you delete it: it is the only record of the verdicts, suite
+   reports and carry-forward items the report summarises, and the
+   report is a digest of them, not a substitute. Append the archive
+   path as the round directory's `state` event (`observed` carries
+   the path) while the manifest still exists, then copy
+   unconditionally:
+
+   ```bash
+   rsync -a --delete "${recorded_round_dir:?}/" "${XDG_CACHE_HOME:-$HOME/.cache}/herdr-fleet-<round-slug>/"
+   ```
+
+   Never put the copy behind an existence test — a stale mid-round
+   copy sitting at the archive path must be overwritten, not taken
+   as done — and never chain the copy and the delete in one command:
+   a `test -e … || cp …; rm -rf …` line whose guard skips the copy
+   still runs the delete, and a live round lost its entire ledger,
+   every verdict and every suite report to exactly that. Mid-round
+   snapshots go to a dated sibling path, never to the archive path.
+   Prove parity before deleting: the last line of `manifest.jsonl`
+   in both places must carry the same `seq` and the file counts must
+   match; on any mismatch keep the round directory and report it.
+   Only then delete the round directory last, in its own command,
    using only the exact absolute path recorded on its `created`
    event: `rm -rf "${recorded_round_dir:?}"`, after confirming that
    path still matches the recorded id and that
@@ -861,8 +883,8 @@ authority.
    `$TMPDIR` and the slug. The `:?` guard keeps an unset recorded
    path from aiming the delete at `/`. It names repo internals and
    has served its purpose. Observe that outcome and fold it into the
-   report; there is no post-delete append. What happens to the target
-   branch next is the user's call.
+   report, naming the archive path; there is no post-delete append.
+   What happens to the target branch next is the user's call.
 
 Round invariants: implementation — conflict resolution included — belongs
 to the agents and diff-grading to the reviewers; builds, tests and
@@ -878,6 +900,7 @@ before its package or merge task is considered done; a container root
 pane is never closed explicitly (step 9) and a workspace the round did
 not create is never closed at all (step 10); resources except the
 round directory and the two pre-ledger ones are write-ahead (step 3)
-and only manifest-confirmed ones are reclaimed; the orchestrator ends
+and only manifest-confirmed ones are reclaimed; the round directory
+is archived and parity-checked before it is deleted (step 10); the orchestrator ends
 a turn only at the points section 1 names, and never on a plan or a
 promise.
