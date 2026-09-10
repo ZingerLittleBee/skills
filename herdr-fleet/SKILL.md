@@ -224,7 +224,7 @@ Record envelope:
   "event": "intent | created | state",
   "resource_key": "package/<slug>/worktree",
   "kind": "worktree | workspace | tab | pane | agent | branch | dir",
-  "role": "package-container | package-implementer | package-reviewer | package-checker | merge-container | merge-fixer | merge-reviewer | merge-checker | package-branch | round-dir | round-workspace | merge-target | worktree-parent-directory | container-root-pane",
+  "role": "package-container | package-implementer | package-reviewer | package-checker | merge-container | merge-fixer | merge-reviewer | merge-checker | package-branch | round-dir | round-workspace | merge-target | worktree-parent-directory | round-archive | container-root-pane",
   "parent_key": "<logical parent resource_key or null>",
   "cleanup_policy": "remove-when-merged | close-aux | close-container | retain-if-unmerged | delete-on-success | report-only",
   "selector": {},
@@ -855,29 +855,58 @@ authority.
    or `cleanup_failed(<error>)`. Archive the round directory before
    you delete it: it is the only record of the verdicts, suite
    reports and carry-forward items the report summarises, and the
-   report is a digest of them, not a substitute. Append the archive
-   path as the round directory's `state` event (`observed` carries
-   the path) while the manifest still exists, then copy
-   unconditionally:
+   report is a digest of them, not a substitute. The archive is a
+   resource like any other and follows the write-ahead rule of
+   step 3; the round directory itself gets no `state` event. Its
+   path embeds the `round_id`, so two rounds can never share one,
+   and it lives in the XDG state directory, which cache cleaning
+   leaves alone:
 
    ```bash
-   rsync -a --delete "${recorded_round_dir:?}/" "${XDG_CACHE_HOME:-$HOME/.cache}/herdr-fleet-<round-slug>/"
+   archive_dir="${XDG_STATE_HOME:-$HOME/.local/state}/herdr-fleet-<round-slug>-<round_id>"
    ```
 
-   Never put the copy behind an existence test — a stale mid-round
-   copy sitting at the archive path must be overwritten, not taken
+   Append `intent` for it (`resource_key` `round/archive`, `kind`
+   `dir`, `role` `round-archive`, `cleanup_policy` `report-only`,
+   `parent_key` the round directory's key, `selector` that absolute
+   path), `mkdir -p` the state directory — it is the user's, not a
+   round resource — then `mkdir` (not `mkdir -p`) the archive
+   directory, append `created` with the path in `observed`, and,
+   since `report-only` keeps it by design, a `state` event with
+   `status` `retained`. An "already exists" refusal is this round's
+   own earlier attempt only if the manifest already holds that
+   `created` event; otherwise stop and report rather than sync into
+   a directory the round cannot prove it owns. Then copy
+   unconditionally, in its own command:
+
+   ```bash
+   rsync -a --delete --checksum "${recorded_round_dir:?}/" "${archive_dir:?}/"
+   ```
+
+   Never put the copy behind an existence test — an earlier
+   attempt's copy at the archive path must be overwritten, not taken
    as done — and never chain the copy and the delete in one command:
    a `test -e … || cp …; rm -rf …` line whose guard skips the copy
    still runs the delete, and a live round lost its entire ledger,
-   every verdict and every suite report to exactly that. Mid-round
-   snapshots go to a dated sibling path, never to the archive path.
-   Prove parity before deleting: the last line of `manifest.jsonl`
-   in both places must carry the same `seq` and the file counts must
-   match; on any mismatch keep the round directory and report it.
-   Only then delete the round directory last, in its own command,
-   using only the exact absolute path recorded on its `created`
-   event: `rm -rf "${recorded_round_dir:?}"`, after confirming that
-   path still matches the recorded id and that
+   every verdict and every suite report to exactly that. Prove
+   parity before deleting: the copy exited 0, and a dry run of the
+   same command exits 0 and prints nothing —
+
+   ```bash
+   rsync -a --delete --checksum --dry-run --itemize-changes "${recorded_round_dir:?}/" "${archive_dir:?}/"
+   ```
+
+   — `--checksum` compares content, so a same-size same-mtime stale
+   file cannot pass as current. Read both exit statuses directly,
+   not through a pipeline. Also require the last line of
+   `manifest.jsonl` in both places to carry the same `seq` and this
+   round's `round_id`. On any failure append a `state` event for
+   the archive with `status` `failed`, keep the round directory, and
+   report `cleanup_failed(<error>)` with the archive path. Only then
+   delete the round directory last, in its own command, using only
+   the exact absolute path recorded on its `created` event:
+   `rm -rf "${recorded_round_dir:?}"`, after confirming that path
+   still matches the recorded id and that
    `<recorded_round_dir>/manifest.jsonl` carries the `round_id` of
    the round being reclaimed. Do not reconstruct the path from
    `$TMPDIR` and the slug. The `:?` guard keeps an unset recorded
@@ -901,6 +930,7 @@ pane is never closed explicitly (step 9) and a workspace the round did
 not create is never closed at all (step 10); resources except the
 round directory and the two pre-ledger ones are write-ahead (step 3)
 and only manifest-confirmed ones are reclaimed; the round directory
-is archived and parity-checked before it is deleted (step 10); the orchestrator ends
-a turn only at the points section 1 names, and never on a plan or a
-promise.
+is archived to a `round_id`-unique path in the state directory and
+checksum-verified before it is deleted (step 10); the orchestrator
+ends a turn only at the points section 1 names, and never on a plan
+or a promise.
