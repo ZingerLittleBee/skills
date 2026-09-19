@@ -28,7 +28,8 @@
 ## Git Commits
 
 - Local commits are authorized by default. Stage and commit only changes from the current task.
-- Use one logical unit per commit when practical. Commit to the current branch; create a working branch first if it is the default branch.
+- Use one logical unit per commit when practical.
+- Follow explicit user or repository instructions for branch selection and creation. Otherwise, work and commit on the current branch, including the default branch.
 - Use Conventional Commits, following the repository's existing types and scopes. Keep the subject imperative, lowercase, and under 72 characters; add a body only when the rationale is not obvious from the diff.
 - Never add `Co-Authored-By:` trailers, generation signatures, or tool watermarks.
 
