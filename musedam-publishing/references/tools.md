@@ -16,8 +16,9 @@ Required: `organizationId`. Optional: `page`, `pageSize`, `platform`, `status`,
 Rows: `id` (the value for `platformAccountIds`), `platformType`, `displayName`,
 `status`, `sessionActionReason`, `groupId` (`null` when ungrouped).
 
-- Status values: `0` disabled, `1` usable, `2` unknown, `3` expired, `4` needs
-  reauthorization.
+- Status values: `0` disabled, `1` usable, `2` unknown, `3` expired (a refresh
+  can recover it, and this listing may perform that refresh), `4` needs
+  reauthorization (refresh failed or the platform has no refresh).
 - The `status` filter is applied to the page already fetched, so
   `pagination.total` stays the unfiltered total. Advance pages to find more.
 - Calling it has side effects: stale OAuth placeholder accounts are deleted and
@@ -98,8 +99,9 @@ Optional: `scheduledTime`, `timezone`, `desktopInstanceId`. Capability:
   Desktop dispatch target change.
 - `scheduledTime` follows the same rules as on create, window included.
 - A local task leaving draft needs an online `desktopInstanceId` owned by the
-  caller. Omitting the field reuses the target already stored on the task and
-  revalidates it.
+  caller. A draft stores no target, so omitting the field on a draft is
+  refused with `DISPATCH_TARGET_REQUIRED`. Omitting it on a task that already
+  carries a target reuses that target and revalidates it.
 
 ## `list_publishing_tasks`
 

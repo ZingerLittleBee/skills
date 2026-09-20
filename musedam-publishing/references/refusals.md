@@ -51,8 +51,7 @@ again and copies a fresh token from **Settings → MCP Access**.
 
 | Reason | HTTP code | Meaning | Next move |
 | --- | --- | --- | --- |
-| `RETRY_TASK_NOT_FOUND` | 404 | No task has this id. | Check the id with `list_publishing_tasks`. |
-| `RESOURCE_NOT_FOUND` | 404 | The task or the account is outside this organization. | Check both ids. |
+| `RESOURCE_NOT_FOUND` | 404 | No task in this organization has this `taskId`, or the account is outside this organization. | Check both ids with `list_publishing_tasks` and `get_publishing_task`. |
 | `RETRY_ACCOUNT_NOT_ON_TASK` | 404 | The account is no longer linked to the task. | Take `platformAccountId` from the task's current executions. |
 | `RETRY_BROWSER_TASK_UNSUPPORTED` | 400 | Browser-runtime tasks cannot be retried. | Create a new task. |
 | `RETRY_LEGACY_LOCAL_TASK_DESKTOP_ONLY` | 400 | The local task predates dispatch targets. | The creator retries it from the Desktop app. |
@@ -63,3 +62,8 @@ again and copies a fresh token from **Settings → MCP Access**.
 
 The retry tool has no `desktopInstanceId`. A dispatch-target refusal here is
 never fixed by another argument, only by editing the task.
+
+The retry service also defines `RETRY_TASK_NOT_FOUND` for a task id that
+names no row at all. On this tool the organization check runs first and
+answers an unknown id with `RESOURCE_NOT_FOUND`, so a client does not see
+`RETRY_TASK_NOT_FOUND` for a bad `taskId`.

@@ -1,19 +1,20 @@
 ---
 name: musedam-publishing
-description: Use when the MuseDAM Publishing MCP server is connected (tools named list_platform_accounts, list_dam_assets, list_desktop_instances, create_publishing_task, publish_publishing_task, get_publishing_task, retry_publishing_task_execution) and the user asks to post, publish, schedule, draft, inspect, or retry social media content on Xiaohongshu, Douyin, Kuaishou, TikTok, YouTube, Facebook, Instagram, X, or LinkedIn from MuseDAM assets. Not for connecting the server; the endpoint and token come from the product's own connection guide.
+description: Use when the MuseDAM Publishing MCP server is connected (tools named list_platform_accounts, list_dam_assets, list_desktop_instances, create_publishing_task, publish_publishing_task, list_publishing_tasks, get_publishing_task, retry_publishing_task_execution) and the user asks to post, publish, schedule, draft, inspect, or retry social media content on Xiaohongshu, Douyin, Kuaishou, TikTok, YouTube, Facebook, Instagram, X, or LinkedIn from MuseDAM assets. Not for connecting the server; the endpoint and token come from the panel's Settings → MCP Access page.
 ---
 
 # MuseDAM Publishing
 
 The server publishes assets that already sit in a MuseDAM library to connected
 platform accounts. This skill assumes the tools already answer. Connecting a
-client is covered by the product's connection guide (`docs/reference/mcp-connection.md`
-in the product repository) and by the panel's **Settings → MCP Access** page;
-send the user there for endpoint, token, and client snippets.
+client is covered by the panel's **Settings → MCP Access** page; send the user
+there for endpoint, token, and client snippets.
 
 Tool arguments and result fields are in
 [references/tools.md](references/tools.md). Refusal reasons and the move each
-one calls for are in [references/refusals.md](references/refusals.md).
+one calls for are in [references/refusals.md](references/refusals.md). The
+JSON bodies of a search, draft, submit sequence are in
+[references/worked-example.md](references/worked-example.md).
 
 ## Before the first call
 
@@ -34,9 +35,12 @@ one calls for are in [references/refusals.md](references/refusals.md).
 ## Order of operations
 
 1. **Accounts.** `list_platform_accounts`. Take the `id` values you will
-   publish to. Status `1` is usable; `3` and `4` need the user to reauthorize
-   the account first. The `status` filter applies to the current page only, so
-   page through when the first page has no match.
+   publish to. Status `1` is usable. Status `3` is expired and may clear on a
+   further `list_platform_accounts` call, since the listing runs session
+   health checks; call again before asking the user to act. Status `4` needs
+   the user to reauthorize the account in the panel. The `status` filter
+   applies to the current page only, so page through when the first page has
+   no match.
 2. **Media.** `list_dam_assets` with `keywords` or `folderIds`. Each row has
    `assetId` and `kind`. An `image_text` task takes images only; `video` and
    `reels` need at least one video. Discovery does not check platform limits
@@ -63,12 +67,11 @@ one calls for are in [references/refusals.md](references/refusals.md).
    submitted; a `draft` is not.
 6. **Submit drafts.** `publish_publishing_task` once per task id you intend
    to send, with `mode` `schedule` or `publish_now` and the same
-   `scheduledTime` rules. A local task leaving draft needs an online
-   `desktopInstanceId` of the caller's; omit the field to reuse the target
-   already stored on the task, which is revalidated.
-
-The connection guide's worked example shows the three JSON bodies for search,
-draft, and submit; reach for it when the user wants to see the exact payloads.
+   `scheduledTime` rules. A local task leaving draft passes an online
+   `desktopInstanceId` of the caller's: a draft stores no Desktop target, so
+   omitting the field here is refused with `DISPATCH_TARGET_REQUIRED`.
+   Omitting it only makes sense on a task that already carries a target you
+   intend to keep, which is then revalidated.
 
 ## Inspecting and retrying
 
