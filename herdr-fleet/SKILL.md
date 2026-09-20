@@ -28,7 +28,7 @@ and what it hands back:
 | Role | Slot | Writes | Spawns | Hands back |
 |---|---|---|---|---|
 | Orchestrator | the user's own session | manifest, briefs, check scripts | every fleet agent | the final report |
-| Implementer | `smol` / `default` / `slow` by package difficulty; `slow` for merge-suite fixes | its own worktree, or the main checkout in the merge tab | nothing | commits plus a summary file |
+| Implementer | `smol` / `default` / `slow` / `hard` by package difficulty; `slow` for merge-suite fixes | its own worktree, or the main checkout in the merge tab | nothing | commits plus a summary file |
 | Reviewer | `review`; an adjudicator tries `slow` first (step 7) | nothing (read-only) | nothing | a structured verdict file |
 | Scout | `smol` | nothing (read-only) | nothing | a structured report file: codebase survey (step 3) or triage of a log, manifest or listing (step 4) |
 
@@ -52,6 +52,7 @@ briefs and the manifest refer to models by name:
 | `smol` | scouts; mechanical, well-bounded packages |
 | `default` | ordinary packages |
 | `slow` | foundational, concurrent, security-sensitive or data-model packages; merge-suite fixes; adjudicating re-grades |
+| `hard` | optional: the rare package that is beyond `slow` (a novel algorithm, a cross-cutting change with an unsettled design, a bug with no reproduction); the most capable and most expensive models, never assigned by default |
 | `review` | reviewers by default; a reviewer never shares a vendor with the implementer it grades |
 
 The catalog and the slot table are the user's, not the skill's: read
@@ -77,6 +78,10 @@ models:
     vendor: openai
     providers:
       - { kind: codex, args: "--dangerously-bypass-approvals-and-sandbox -m gpt-6-astra -c model_reasoning_effort=xhigh" }
+  claude-fable-5.1-xhigh:
+    vendor: anthropic
+    providers:
+      - { kind: claude, args: "--dangerously-skip-permissions --model claude-fable-5-1 --effort xhigh" }
   gemini-3.8-flash:
     vendor: google
     providers:
@@ -90,6 +95,7 @@ slots:
   smol:    [gemini-3.8-flash, claude-haiku-4.5]
   default: [gpt-6-astra-medium, claude-opus-5]
   slow:    [gpt-6-astra-xhigh, claude-opus-5]
+  hard:    [claude-fable-5.1-xhigh, gpt-6-astra-xhigh]
   review:  [grok-4.6, claude-opus-5]
 ```
 
@@ -153,7 +159,9 @@ which model, through which CLI, actually did each package.
   creates one of its own in step 3 and closes it in step 10.
 - The main repo's working tree must be clean; surface a dirty tree
   instead of working around it.
-- Resolve the four slots (step 1). For each provider of each model in
+- Resolve the slots (step 1): `smol`, `default`, `slow` and `review`
+  are required; `hard` is optional, and when it is absent or empty no
+  package may be graded `hard` this round. For each provider of each model in
   each slot, in order: check the binary with `command -v`, then find
   its integration target's row in `herdr integration status` (the
   command takes no argument and lists every target); the watch loop's
@@ -165,10 +173,12 @@ which model, through which CLI, actually did each package.
   the final report (step 10) as kept, since an integration is the
   user's environment, not a round resource. A target the user
   declines is a failed check. Drop providers that fail either check
-  and models left without one. A slot with no surviving model stops
-  the round here: report it and ask the user. Then check the
-  cross-vendor rule is satisfiable: for the active model of each
-  implementer slot (`smol`, `default`, `slow`) there must be at least
+  and models left without one. A required slot with no surviving
+  model stops the round here: report it and ask the user; a `hard`
+  slot left with none is reported and treated as absent. Then check
+  the cross-vendor rule is satisfiable: for the active model of each
+  implementer slot (`smol`, `default`, `slow`, and `hard` when
+  present) there must be at least
   one surviving `review` model of a different vendor; if any lacks
   one, stop and ask the user for another review model.
 - This is a long, hands-off run. If your own session is not in an
@@ -445,10 +455,12 @@ present it; the decisions stay with the user.
 Present the plan as a short table and get one confirmation before
 creating anything else (skip only if the user already said to run
 unattended): packages, branch names, merge order, merge target, slot
-per package, the active pair per slot from step 2, any scout
-contradictions, and those worktree decisions. The user may override
-slots here ("this round, codex only", "this round, `slow` runs on
-claude-fable-5.1-xhigh"): apply the override by filtering the slot's
+per package (a `hard` package always with the reason it is beyond
+`slow`, since that slot spends the most expensive models; unattended
+runs never assign `hard` on their own), the active pair per slot from
+step 2, any scout contradictions, and those worktree decisions. The
+user may override slots here ("this round, codex only", "this round,
+`slow` runs on gpt-6-astra-xhigh only"): apply the override by filtering the slot's
 models or by replacing its list with other catalog models, never by
 editing the slot file or inventing a model the catalog lacks; a
 replacement passes the same step 2 checks (binary, integration,
@@ -582,8 +594,15 @@ architecturally risky packages (data models, concurrency, security,
 anything other packages build on) go to `slow`: a weak foundation
 costs every reviewer and every later round. Mechanical, well-bounded
 packages (apply an established pattern, styling sweeps, copy changes,
-renames) go to `smol`. Everything else is `default`. When unsure,
-assign up. Write-ahead the implementer (`kind` `agent`, `role`
+renames) go to `smol`. Everything else is `default`. When unsure
+between those three, assign up. `hard` is never reached by assigning
+up: it is for the rare package that `slow` is expected to fail at (a
+novel algorithm, a cross-cutting change whose design is still open, a
+bug with no reproduction), and only when the user asked for it or the
+plan table named the package as `hard` with its reason and the user
+confirmed. The models there are the most expensive in the catalog,
+so a `hard` package is one the round would otherwise have to drop.
+Write-ahead the implementer (`kind` `agent`, `role`
 `package-implementer`, slot name in `selector`) and append `created`,
 with the pair actually used, after a successful start:
 
