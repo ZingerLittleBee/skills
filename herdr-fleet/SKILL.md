@@ -478,14 +478,22 @@ for you):
 
 ```bash
 herdr pane run <check-pane-id> "bash <recorded-round-dir>/<slug>-<phase>-<sha>-<attempt>.sh"
-herdr pane wait-output <check-pane-id> --match "FLEET <slug> <phase> <sha> <attempt> exit=" --timeout 540000
+herdr pane wait-output <check-pane-id> --source recent-unwrapped --match "FLEET <slug> <phase> <sha> <attempt> exit=" --timeout 540000
 head -n 1 <recorded-round-dir>/<slug>-<phase>-<sha>.md
 ```
 
-Keep `--timeout` under the tool call's own limit. When the wait
-expires before the marker appears, the script is still running:
-re-issue the same `wait-output`; it searches output already on
-screen, so a marker printed in between is still caught.
+`--source recent-unwrapped` is required: the default `recent`
+snapshot keeps soft wraps, and a marker that wraps in a narrow pane
+never matches as a substring. Keep `--timeout` under the tool call's
+own limit. When the wait expires before the marker appears, find out
+why before waiting again: `herdr pane process-info --pane
+<check-pane-id>`. A foreground process other than the shell means
+the script is still running, so re-issue the same `wait-output` (it
+searches output already on screen, so a marker printed in between is
+still caught). An idle shell with no marker means the script died
+before printing it: treat that run as `FAIL`, rerun once with the
+next attempt number, and send a second death to the triage scout
+with the log path.
 
 The preparation script (`<phase>` `prep`) carries:
 
@@ -536,6 +544,16 @@ with the pair actually used, after a successful start:
 ```bash
 herdr agent start <slug> --kind <kind> --pane <root-pane-id> -- <provider-args>
 ```
+
+A start that returns anything but success may still have left an
+agent behind: `agent_not_ready` means the CLI came up but stopped at
+a dialog, and a timeout means it may still be coming up. This holds
+for every `agent start` in the round. Before anything else, check
+`herdr agent list` for that exact name in that pane; if it is there,
+append `created` with the observed ids, then handle its screen as a
+`blocked` agent (step 6) or exit it. Only when no agent by that name
+exists may the start be retried. An agent that exists without a
+`created` event is one the cleanup of step 10 cannot reclaim.
 
 A real brief is too long to push through a terminal. Write it as a
 Markdown file, one per package, in the recorded round directory. One
@@ -603,7 +621,7 @@ tool call a minute to hear "no change"; block on the fleet instead.
 ```bash
 bash -c '
 for a in <unsettled agent names>; do herdr agent wait "$a" --timeout 540000 & done
-<for the check script in flight, if any:> herdr pane wait-output <check-pane-id> --match "<its marker prefix>" --timeout 540000 &
+<for the check script in flight, if any:> herdr pane wait-output <check-pane-id> --source recent-unwrapped --match "<its marker prefix>" --timeout 540000 &
 wait -n; kill $(jobs -p) 2>/dev/null'
 herdr agent list
 ```
@@ -674,17 +692,23 @@ Known traps and how to handle them:
   moments after a start or a prompt, with no work done, and whose
   visible screen names a quota, usage or rate limit, an overloaded or
   unavailable model, an unknown model name, an expired login, or an
-  HTTP 401/429/5xx, has lost its model, not its task. Shut it (step 9
-  shutdown procedure) and mark the failed pair for the rest of the
-  round: the provider for that model when the screen blames the model
-  (quota for it, unknown name, overloaded), or the provider's kind for
-  every model when it blames the CLI itself (expired login,
-  subscription exhausted). Take the next surviving pair: the same
-  model's next provider first, then the slot's next model (for
-  `review`, the next model whose vendor differs from that package's
-  implementer). Append a `slot` event naming the old and new pair,
-  start the replacement in the same pane with the new kind and
-  arguments, write-ahead and `created` as usual, and re-brief it with
+  HTTP 401/429/5xx, has lost its model, not its task. Exit the agent
+  only: its exit command through the pane as in the step 9 procedure,
+  confirm the name is gone from `herdr agent list` and that
+  `herdr pane process-info` shows the pane back at an idle shell, and
+  do not close the pane, since the replacement reuses it. Mark the
+  failed pair for the rest of the round: the provider for that model
+  when the screen blames the model (quota for it, unknown name,
+  overloaded), or the provider's kind for every model when it blames
+  the CLI itself (expired login, subscription exhausted). Take the
+  next surviving pair: the same model's next provider first, then the
+  slot's next model. For any agent in a reviewer role (`<slug>-review`,
+  `<slug>-adjudicate`, `<slug>-merge-review`), whatever slot it runs
+  on, skip every model whose vendor equals that of the implementer it
+  grades; the vendor rule follows the role, not the slot name. Append
+  a `slot` event naming the old and new pair, start the replacement
+  in the same pane with the new kind and arguments, write-ahead and
+  `created` as usual, and re-brief it with
   the original brief path plus one instruction: read
   `git log <base-sha>..HEAD` and `git status` in the worktree first
   and continue from the committed state. Every later start on that
@@ -873,21 +897,31 @@ Reviewers are fleet agents: the same watch loop, wait block, states,
 and traps apply, and a settled reviewer means a verdict file to read.
 Reviews run no builds, so any number of reviewers can work while
 implementers are still working; the one-heavy-build rule is untouched.
-Read a verdict for its decision, not its prose:
+Read a verdict for its decision, not its prose, and validate it
+before you read it, because a projection that tolerates missing or
+misspelled fields would show a broken verdict as "no blocking
+findings". First the validation, which exits non-zero on any
+violation:
 
 ```bash
-jq '{candidate_sha, overall_correctness, blocking: [(.findings // [])[] | select(.priority == "P0" or .priority == "P1") | {title, priority, file_path, line_start}], assumption: (.assumption_check // {} | {status, assumption})}' <verdict-path>
+jq -e '(.candidate_sha | type == "string") and (.overall_correctness | IN("correct", "incorrect")) and (.findings | type == "array") and all(.findings[]; (.priority | IN("P0", "P1", "P2", "P3")) and (.title | type == "string") and (.file_path | type == "string") and (.line_start | type == "number")) and (.assumption_check | type == "object") and (.assumption_check.status | IN("designed", "executed", "not-applicable")) and ((.overall_correctness == "incorrect") == any(.findings[]; .priority == "P0" or .priority == "P1")) and (.assumption_check.assumption != null or .assumption_check.status == "not-applicable")' <verdict-path> >/dev/null
 ```
 
-A verdict that `jq` cannot parse, that is missing, that names a sha
-other than the recorded one, whose `overall_correctness` contradicts
-its findings, or whose `assumption` is null with `status` other than
-`not-applicable`, is not a verdict: send it back to the reviewer for
-correction, at no correction-cycle cost; a second malformed verdict
-from the same pair is a dead pair, handled by the slot fallback
-(step 6). The projection above is all of the verdict you read; the
-titles and locations are enough to route it, and the bodies stay in
-the file for the implementer.
+Then, only after it exits 0 and `candidate_sha` equals the recorded
+one, the projection:
+
+```bash
+jq '{candidate_sha, overall_correctness, blocking: [.findings[] | select(.priority == "P0" or .priority == "P1") | {title, priority, file_path, line_start}], assumption: (.assumption_check | {status, assumption})}' <verdict-path>
+```
+
+A verdict that is missing, that `jq` cannot parse, that fails the
+validation, or that names a sha other than the recorded one is not a
+verdict: send it back to the reviewer for correction, at no
+correction-cycle cost; a second malformed verdict from the same pair
+is a dead pair, handled by the slot fallback (step 6). The projection
+above is all of the verdict you read; the titles and locations are
+enough to route it, and the bodies stay in the file for the
+implementer.
 
 You adjudicate. With both gates' results in hand, decide accept, send
 back, or drop; that call needs round-level context (merge order,
@@ -901,10 +935,12 @@ surfaces a likely-blocking issue that sat unchanged in the prior
 candidate, hand that one finding to an **adjudicator**,
 `<slug>-adjudicate`, a second reviewer agent (write-ahead `role`
 `package-reviewer`, in a pane split like the review pane) on the
-`slow` slot's active pair, or, when `slow` shares a vendor with the
-package's implementer, on the next `review` model that does not;
-with no such model left, the finding goes to the user. Its verdict
-uses the same format and settles that finding.
+first `slow` model, in slot order, whose vendor differs from the
+package's implementer, or, when none does, on the next `review`
+model that does; with no such model left, the finding goes to the
+user. The vendor rule applies to the adjudicator on every start and
+fallback exactly as to any reviewer (step 6). Its verdict uses the
+same format and settles that finding.
 
 Every fix invalidates the prior candidate sha: repeat the clean-tree
 plumbing, record the new one, and run both gates again, the quick
@@ -1078,11 +1114,21 @@ with the report paths.
    round's heavy build, and the first time the packages meet, so
    cross-package failures land here. Its commands are the full build
    and test commands from the scout report (step 3); it changes no
-   code and makes no commits. While it runs, nothing else touches the
-   main checkout: no merge implementer is live and you run no git
-   there. Read the report's first line. On `FAIL`, the triage scout
-   (step 4) reads the report: `TRANSIENT` is a rerun on the same sha;
-   otherwise record
+   code and makes no commits. The suite binds to its sha exactly as a
+   quick check does (step 8): before running and again after the
+   marker appears, require `git -C <main-repo-path> status
+   --porcelain` to be empty and both `git -C <main-repo-path>
+   rev-parse HEAD` and `git -C <main-repo-path> rev-parse
+   <merge-target>` to equal the sha the script names. A `PASS` whose
+   post-run check fails is not a pass: a build that mutates tracked
+   files has produced an unverified tree, so treat it as a `FAIL`
+   whose report is the `git status` output, and let the merge
+   implementer below decide whether those files are generated output
+   to commit or a build to fix; the rerun binds to the new sha. While
+   the suite runs, nothing else touches the main checkout: no merge
+   implementer is live and you run no git there. Read the report's
+   first line. On `FAIL`, the triage scout (step 4) reads the report:
+   `TRANSIENT` is a rerun on the same sha; otherwise record
    `pre_fix_sha=$(git -C <main-repo-path> rev-parse HEAD)` and send
    the report path and the triage file's path by file-drop to one
    merge implementer rooted in the main checkout (split and
