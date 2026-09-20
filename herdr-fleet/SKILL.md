@@ -30,7 +30,7 @@ and what it hands back:
 | Orchestrator | the user's own session | manifest, briefs, check scripts | every fleet agent | the final report |
 | Implementer | `smol` / `default` / `slow` by package difficulty | its own worktree only | nothing | commits plus a summary file |
 | Reviewer | `review` | nothing (read-only) | nothing | a structured verdict file |
-| Scout | `smol` | nothing (read-only) | nothing | a structured report file |
+| Scout | `smol` | nothing (read-only) | nothing | a structured report file: codebase survey (step 3) or triage of a log, manifest or listing (step 4) |
 
 Builds, tests and worktree preparation are commands the orchestrator
 runs in dedicated shell panes (steps 4, 8, 9), not agents. Conflict
@@ -213,8 +213,11 @@ check reports are read for their first line (step 8); pane output is
 read only for agents that are `blocked`, `unknown`, suspiciously
 long in `working`, or suspected of a dead model (step 6); and failing
 output travels to an implementer as a file path, never as pasted
-text. Read a file in full only when a decision genuinely turns on its
-contents.
+text. Anything longer than a screen that you would otherwise read to
+reach a conclusion (a failing log, a leftover round's manifest, a
+long worktree inventory) goes to a **triage scout** (step 4) that
+returns the conclusion. Read a file in full only when a decision
+genuinely turns on its contents and it is short.
 
 ## 3. Package the work
 
@@ -398,7 +401,10 @@ git -C <main-repo-path> worktree list --porcelain
 ```
 
 List read-only and ask the user to decide reuse / remove / keep for
-each; never auto-clean a prior round's resources.
+each; never auto-clean a prior round's resources. When the listings
+run past a screen, a scout (above) builds the table (path, branch,
+dirty or clean, herdr workspace still open, disk size) and you
+present it; the decisions stay with the user.
 
 Present the plan as a short table and get one confirmation before
 creating anything else (skip only if the user already said to run
@@ -495,14 +501,25 @@ The preparation script (`<phase>` `prep`) carries:
   attempt number, not evidence that the worktree is broken.
 - No build and no test run: preparation only.
 
-A `FAIL` on the first worktree that is not transient is evidence
-against the scout report, not against the worktree: read the log's
-last 30 lines (the one log you read yourself), correct the command
-from what they show or from a fresh scout question, and rerun with
-the next attempt number. Resolution contends for the same shared
-caches as builds, so prepare one worktree at a time and wait for its
-marker before starting the next. The check pane stays open, at an
-idle shell, until step 8 needs it.
+You never read a failing log yourself. A `FAIL` report goes to a
+**triage scout**: a scout started exactly as in step 3 (its own tab
+in the orchestrator workspace, write-ahead, the `smol` slot's active
+pair), briefed by file-drop with the report path and one question,
+and shut once its answer is read. Its answer is a file with a fixed
+first line, `TRANSIENT`, `GENUINE` or `MISCONFIGURED`, followed by
+the failing command, the decisive lines of the log quoted by line
+number, and, for `MISCONFIGURED`, the corrected command. `TRANSIENT`
+(network, a cache lock, a flaky download) is a rerun with the next
+attempt number. `MISCONFIGURED` on preparation is evidence against
+the scout report, not against the worktree: take the corrected
+command and rerun. `GENUINE` on preparation means the repo does not
+build at the base sha; stop and tell the user. One triage scout may
+serve the whole round, re-prompted per report, as long as it stays
+listed; it is a read-only agent and never touches a worktree.
+Resolution contends for the same shared caches as builds, so prepare
+one worktree at a time and wait for its marker before starting the
+next. The check pane stays open, at an idle shell, until step 8 needs
+it.
 
 ## 5. Start and brief each implementer
 
@@ -957,12 +974,14 @@ post-run clean-tree check catches it and the package goes back to the
 implementer with that fact.
 
 Read the report's first line only. `PASS <candidate_sha>` passes the
-gate. `FAIL <candidate_sha>` goes into the send-back of step 7 as the
-report file's path, never as pasted output, and any retained fix,
-mechanical or otherwise, is a new candidate for both gates. A report
-naming any other sha is discarded and the check rerun. No changed
-tree reaches the merge without a matching verdict and a green check
-report on its exact sha.
+gate. `FAIL <candidate_sha>` goes to the triage scout (step 4):
+`TRANSIENT` is a rerun on the same candidate; `GENUINE` or
+`MISCONFIGURED` goes into the send-back of step 7 as the report
+file's path plus the triage file's path, never as pasted output, and
+any retained fix, mechanical or otherwise, is a new candidate for
+both gates. A report naming any other sha is discarded and the check
+rerun. No changed tree reaches the merge without a matching verdict
+and a green check report on its exact sha.
 
 ## 9. Merge the round locally
 
@@ -1061,10 +1080,13 @@ with the report paths.
    and test commands from the scout report (step 3); it changes no
    code and makes no commits. While it runs, nothing else touches the
    main checkout: no merge implementer is live and you run no git
-   there. Read the report's first line. On `FAIL`, record
+   there. Read the report's first line. On `FAIL`, the triage scout
+   (step 4) reads the report: `TRANSIENT` is a rerun on the same sha;
+   otherwise record
    `pre_fix_sha=$(git -C <main-repo-path> rev-parse HEAD)` and send
-   the report path by file-drop to one merge implementer rooted in
-   the main checkout (split and write-ahead as in item 2 if needed).
+   the report path and the triage file's path by file-drop to one
+   merge implementer rooted in the main checkout (split and
+   write-ahead as in item 2 if needed).
    Once it settles, require a clean tree and a new commit, record
    `candidate_sha=$(git -C <main-repo-path> rev-parse HEAD)`, then
    dispatch a merge reviewer (as in item 2) to grade the exact
@@ -1137,6 +1159,18 @@ path/ref/sha, cleanup policy). Never reclaim `live - manifest`.
 recreate or delete. An intent-only selector match after a lost
 create response is an audit candidate, not automatic destructive
 authority.
+
+The reconciliation itself is reading, and for a leftover round from
+another invocation it is a lot of it: a triage scout (step 4) reads
+that manifest, `herdr agent list`, `herdr worktree list` and the
+branch list, and returns one table, one row per recorded resource:
+key, role, cleanup policy, recorded id, whether it is live, its
+occupant or git state, and the last recorded status. You decide each
+disposition from the table. The table is evidence for deciding, not
+for destroying: before any remove, close or delete below, re-run the
+specific check that step names (`git status --porcelain`, the sha
+comparisons, `herdr pane process-info`) yourself on that one
+resource; a scout's row never substitutes for it.
 
 1. Per package, remove the worktree only when all of these hold:
    `git -C <worktree-path> status --porcelain` is empty, the branch
@@ -1260,7 +1294,8 @@ user talks to; implementation (conflict resolution included) belongs
 to implementer agents and diff-grading to reviewer agents on a
 different vendor's model, chosen per package; builds, tests and
 worktree preparation are check scripts the orchestrator runs in check
-panes, and broad codebase reading is a scout's job, never the
+panes, and broad codebase reading and the triage of logs, leftover
+manifests and long listings are a scout's job, never the
 orchestrator's window; every git command names its repo with `-C`
 and every destructive path is a recorded literal; review, quick
 check, and merge bind to the same exact clean commit; a blocking
