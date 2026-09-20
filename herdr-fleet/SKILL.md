@@ -37,11 +37,15 @@ runs in dedicated shell panes (steps 4, 8, 9), not agents. Conflict
 resolution and merge-suite fixes are the Implementer role working in
 the merge tab (step 9); grading those fixes is the Reviewer role.
 
-Models are declared once, by name, in a **model catalog**: each entry
-is an agent kind plus the exact arguments that select that model, its
-reasoning level and its auto-approving mode. A **slot** is an ordered
-list of catalog names, the candidates. Arguments live only in the
-catalog; slots, briefs and the manifest refer to models by name:
+Models are declared once, by name, in a **model catalog**. A model
+entry is an ordered list of **providers**: each provider is an agent
+kind plus the exact arguments that select that model, its reasoning
+level and its auto-approving mode through that CLI. One model often
+has several providers (the same Gemini through `agy` or through
+`droid`), and quotas are per provider, so a model is only unavailable
+once all its providers are. A **slot** is an ordered list of catalog
+names, the candidates. Arguments live only in the catalog; slots,
+briefs and the manifest refer to models by name:
 
 | Slot | Used for |
 |---|---|
@@ -56,12 +60,20 @@ Its shape, with example values:
 
 ```yaml
 models:
-  claude-opus-5:      { kind: claude, args: "--dangerously-skip-permissions --model claude-opus-5" }
-  claude-haiku-4.5:   { kind: claude, args: "--dangerously-skip-permissions --model claude-haiku-4-5-20251001" }
-  gpt-6-astra-medium: { kind: codex,  args: "--dangerously-bypass-approvals-and-sandbox -m gpt-6-astra -c model_reasoning_effort=medium" }
-  gpt-6-astra-xhigh:  { kind: codex,  args: "--dangerously-bypass-approvals-and-sandbox -m gpt-6-astra -c model_reasoning_effort=xhigh" }
-  gemini-3.8-flash:   { kind: agy,    args: "--dangerously-skip-permissions --model gemini-3.8-flash --effort low" }
-  grok-4.6:           { kind: grok,   args: "--permission-mode bypassPermissions --model grok-4.6" }
+  claude-opus-5:
+    - { kind: claude, args: "--dangerously-skip-permissions --model claude-opus-5" }
+  claude-haiku-4.5:
+    - { kind: claude, args: "--dangerously-skip-permissions --model claude-haiku-4-5-20251001" }
+  gpt-6-astra-medium:
+    - { kind: codex,  args: "--dangerously-bypass-approvals-and-sandbox -m gpt-6-astra -c model_reasoning_effort=medium" }
+    - { kind: omp,    args: "--approval-mode=yolo --model openai-codex/gpt-6-astra", vendor: openai }
+  gpt-6-astra-xhigh:
+    - { kind: codex,  args: "--dangerously-bypass-approvals-and-sandbox -m gpt-6-astra -c model_reasoning_effort=xhigh" }
+  gemini-3.8-flash:
+    - { kind: agy,    args: "--dangerously-skip-permissions --model gemini-3.8-flash --effort low" }
+    - { kind: droid,  args: "--auto high", vendor: google }
+  grok-4.6:
+    - { kind: grok,   args: "--permission-mode bypassPermissions --model grok-4.6" }
 slots:
   smol:    [gemini-3.8-flash, claude-haiku-4.5]
   default: [gpt-6-astra-medium, claude-opus-5]
@@ -69,10 +81,14 @@ slots:
   review:  [grok-4.6, claude-opus-5]
 ```
 
-A model's **vendor** is its `kind` unless the entry declares a
-`vendor` field (needed when one CLI fronts another vendor's model, as
-`omp` does); the cross-vendor rule for `review` compares vendors. If
-the file is missing, ask the user once which models they have and
+A provider's **vendor** is its `kind` unless it declares a `vendor`
+field, needed when one CLI fronts another vendor's model (`omp`,
+`droid`); a model's vendor is that of its first provider, and the
+cross-vendor rule for `review` compares vendors. Providers of one
+model must select the same model, so a provider without a model
+argument (`droid` takes its model from its own config) belongs to a
+model entry only when that config matches. If the file is missing,
+ask the user once which models they have, through which CLIs, and
 which slot each should serve, and write the file for them before
 continuing. Per-kind arguments that
 turn on auto-approving mode and select the model, as verified against
@@ -97,17 +113,19 @@ notices. The arguments go after `--` on every start:
 herdr agent start <name> --kind <kind> --pane <pane-id> -- <candidate-args>
 ```
 
-**Slot resolution** happens once per round, in step 2: a candidate
+**Slot resolution** happens once per round, in step 2: a provider
 whose binary is missing (`command -v <binary>`) or whose herdr
-integration cannot be brought to `current` is dropped for the round;
-the first surviving candidate is the slot's active one. There is no
-probing beyond that. A candidate that turns out to be dead at runtime
-(quota, outage, bad model name) is handled by the **slot fallback**
-rule in step 6: the agent is replaced from the next candidate and the
-slot's pointer moves on for the rest of the round. The active
-candidate per slot is shown in the step 3 plan and recorded in the
-manifest (step 4); every fallback is recorded too, so the final report
-can say which model actually did each package.
+integration cannot be brought to `current` is dropped for the round,
+a model with no surviving provider is dropped with it, and the first
+surviving model with its first surviving provider is the slot's
+active pair. There is no probing beyond that. A pair that turns out
+to be dead at runtime (quota, outage, bad model name) is handled by
+the **slot fallback** rule in step 6, which moves first to the same
+model's next provider and only then to the slot's next model; the
+slot's pointer stays moved for the rest of the round. The active pair
+per slot is shown in the step 3 plan and recorded in the manifest
+(step 4); every fallback is recorded too, so the final report can say
+which model, through which CLI, actually did each package.
 
 ## 2. Preconditions
 
@@ -124,15 +142,16 @@ can say which model actually did each package.
   creates one of its own in step 3 and closes it in step 10.
 - The main repo's working tree must be clean (`git status`); surface a
   dirty tree instead of working around it.
-- Resolve the four slots (step 1). For each candidate, in order: check
-  the binary with `command -v`, then `herdr integration status` for
-  its kind, running `herdr integration install <kind>` when it reads
-  `not installed` or `outdated`; the watch loop's state detection comes
-  from that integration. Drop candidates that fail either check. A
-  slot with no surviving candidate stops the round here: report it and
-  ask the user. Confirm the `review` slot's active candidate differs in
-  vendor from the active `default` and `slow` candidates; if it does
-  not, advance `review` to the first candidate that does.
+- Resolve the four slots (step 1). For each provider of each candidate
+  model, in order: check the binary with `command -v`, then
+  `herdr integration status` for its kind, running
+  `herdr integration install <kind>` when it reads `not installed` or
+  `outdated`; the watch loop's state detection comes from that
+  integration. Drop providers that fail either check and models left
+  without one. A slot with no surviving model stops the round here:
+  report it and ask the user. Confirm the `review` slot's active model
+  differs in vendor from the active `default` and `slow` models; if it
+  does not, advance `review` to the first model that does.
 - This is a long, hands-off run. If your own session is not in an
   auto-accepting permission mode, warn that every approval prompt
   stalls the round.
@@ -585,19 +604,23 @@ Known traps and how to handle them:
   screen (`herdr agent read <name> --source visible`) names a quota,
   usage or rate limit, an overloaded or unavailable model, an unknown
   model name, an expired login, or an HTTP 401/429/5xx, has lost its
-  model, not its task. Shut it (step 9 shutdown procedure), mark that
-  candidate failed for the rest of the round, and take the slot's next
-  surviving candidate (for `review`, skipping any candidate that
-  shares a vendor with that package's implementer). Append a `slot`
-  event naming the old and new candidate, start the replacement in the
-  same pane with the new arguments, write-ahead and `created` as
-  usual, and re-brief it with the original brief path plus one
-  instruction: read `git log <base-sha>..HEAD` and `git status` in
-  the worktree first and continue from the committed state. Every
-  later start on that slot uses the new candidate directly; the
-  failed one is never retried this round. A slot whose candidates are
-  exhausted ends the turn with the question, after doing everything on
-  this wake that does not depend on it.
+  model, not its task. Shut it (step 9 shutdown procedure) and mark
+  the failed pair for the rest of the round: the provider for that
+  model when the screen blames the model (quota for it, unknown name,
+  overloaded), or the provider's kind for every model when it blames
+  the CLI itself (expired login, subscription exhausted). Take the
+  next surviving pair: the same model's next provider first, then the
+  slot's next model (for `review`, skipping any model that shares a
+  vendor with that package's implementer). Append a `slot` event
+  naming the old and new pair, start the replacement in the same pane
+  with the new kind and arguments, write-ahead and `created` as usual,
+  and re-brief it with the original brief path plus one instruction:
+  read `git log <base-sha>..HEAD` and `git status` in the worktree
+  first and continue from the committed state. Every later start on
+  that slot uses the new pair directly; a failed pair is never retried
+  this round. A slot whose pairs are exhausted ends the turn with the
+  question, after doing everything on this wake that does not depend
+  on it.
 - **Swallowed first prompt.** Some agents (droid, notably) eat a prompt
   sent during their startup/welcome screen. If an agent is `idle`
   shortly after start with no meaningful output and no error on
