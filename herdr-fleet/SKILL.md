@@ -37,9 +37,11 @@ runs in dedicated shell panes (steps 4, 8, 9), not agents. Conflict
 resolution and merge-suite fixes are the Implementer role working in
 the merge tab (step 9); grading those fixes is the Reviewer role.
 
-A **slot** is an ordered list of candidates; a candidate is an agent
-kind plus the exact arguments that select its model, reasoning level
-and auto-approving mode. Model names live only here:
+Models are declared once, by name, in a **model catalog**: each entry
+is an agent kind plus the exact arguments that select that model, its
+reasoning level and its auto-approving mode. A **slot** is an ordered
+list of catalog names, the candidates. Arguments live only in the
+catalog; slots, briefs and the manifest refer to models by name:
 
 | Slot | Used for |
 |---|---|
@@ -48,27 +50,31 @@ and auto-approving mode. Model names live only here:
 | `slow` | foundational, concurrent, security-sensitive or data-model packages; adjudicating re-grades |
 | `review` | every reviewer; must not share a vendor with `default` or `slow` |
 
-The slot table is the user's, not the skill's: read it from
-`${XDG_CONFIG_HOME:-$HOME/.config}/herdr-fleet/slots.yml`. Its shape,
-with example values:
+The catalog and the slot table are the user's, not the skill's: read
+both from `${XDG_CONFIG_HOME:-$HOME/.config}/herdr-fleet/slots.yml`.
+Its shape, with example values:
 
 ```yaml
-smol:
-  - { kind: agy,    args: "--dangerously-skip-permissions --model gemini-3.8-flash --effort low" }
-  - { kind: claude, args: "--dangerously-skip-permissions --model claude-haiku-4-5-20251001" }
-default:
-  - { kind: codex,  args: "--dangerously-bypass-approvals-and-sandbox -m gpt-6-astra -c model_reasoning_effort=medium" }
-  - { kind: claude, args: "--dangerously-skip-permissions --model claude-opus-5" }
-slow:
-  - { kind: codex,  args: "--dangerously-bypass-approvals-and-sandbox -m gpt-6-astra -c model_reasoning_effort=xhigh" }
-  - { kind: claude, args: "--dangerously-skip-permissions --model claude-opus-5 --effort high" }
-review:
-  - { kind: grok,   args: "--permission-mode bypassPermissions --model grok-4.6" }
-  - { kind: claude, args: "--dangerously-skip-permissions --model claude-opus-5" }
+models:
+  claude-opus-5:      { kind: claude, args: "--dangerously-skip-permissions --model claude-opus-5" }
+  claude-haiku-4.5:   { kind: claude, args: "--dangerously-skip-permissions --model claude-haiku-4-5-20251001" }
+  gpt-6-astra-medium: { kind: codex,  args: "--dangerously-bypass-approvals-and-sandbox -m gpt-6-astra -c model_reasoning_effort=medium" }
+  gpt-6-astra-xhigh:  { kind: codex,  args: "--dangerously-bypass-approvals-and-sandbox -m gpt-6-astra -c model_reasoning_effort=xhigh" }
+  gemini-3.8-flash:   { kind: agy,    args: "--dangerously-skip-permissions --model gemini-3.8-flash --effort low" }
+  grok-4.6:           { kind: grok,   args: "--permission-mode bypassPermissions --model grok-4.6" }
+slots:
+  smol:    [gemini-3.8-flash, claude-haiku-4.5]
+  default: [gpt-6-astra-medium, claude-opus-5]
+  slow:    [gpt-6-astra-xhigh, claude-opus-5]
+  review:  [grok-4.6, claude-opus-5]
 ```
 
-If the file is missing, ask the user for the four slots once and
-write the file for them before continuing. Per-kind arguments that
+A model's **vendor** is its `kind` unless the entry declares a
+`vendor` field (needed when one CLI fronts another vendor's model, as
+`omp` does); the cross-vendor rule for `review` compares vendors. If
+the file is missing, ask the user once which models they have and
+which slot each should serve, and write the file for them before
+continuing. Per-kind arguments that
 turn on auto-approving mode and select the model, as verified against
 the installed CLIs:
 
@@ -309,7 +315,7 @@ created its own workspace (step 3), append its `created` event with
 the recorded workspace id; move any scout reports from `$TMPDIR`
 (step 3) into the round directory; and append one `slot` event per
 slot with the active candidate (`resource_key` `slot/<name>`, `kind`
-`slot`, `observed` carrying `kind` and `args`). Mint a `round_id`
+`slot`, `observed` carrying the model name, `kind` and `args`). Mint a `round_id`
 unique to this invocation; ownership is proved by `round_id`, not by
 round-slug or label. `seq` increases monotonically so an auditor can
 detect a truncated or misordered append.
@@ -356,8 +362,8 @@ deliberately retained. `selector` is structured expected identity,
 used to find the resource again if a create response is lost.
 `observed` is empty on `intent` and carries the real ids on
 `created`. Agent `created` events also carry the slot name and the
-candidate's `kind` and `args` in `observed`, so the report can name
-the model behind every package.
+candidate's model name, `kind` and `args` in `observed`, so the report
+can name the model behind every package.
 
 Before each `herdr worktree create`, append `intent` for the worktree
 (`package/<slug>/worktree`, `kind` `worktree`, `role`
@@ -603,8 +609,8 @@ Known traps and how to handle them:
   `herdr pane send-text <pane-id> <text>` followed by `herdr pane
   send-keys <pane-id> enter`; `agent prompt` rejects a blocked agent
   with `agent_blocked`. An approval prompt on a fleet agent means its
-  auto-mode argument is missing or wrong: answer it, then fix the
-  slot's `args` for the rest of the round. A question that needs new
+  auto-mode argument is missing or wrong: answer it, then fix that
+  model's `args` in the catalog for the rest of the round. A question that needs new
   authority or a user decision goes to the user instead of being
   answered on their behalf. When that happens, first do everything on
   this wake that does not depend on the answer (answer the other
