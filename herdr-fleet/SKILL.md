@@ -28,8 +28,8 @@ and what it hands back:
 | Role | Slot | Writes | Spawns | Hands back |
 |---|---|---|---|---|
 | Orchestrator | the user's own session | manifest, briefs, check scripts | every fleet agent | the final report |
-| Implementer | `smol` / `default` / `slow` by package difficulty | its own worktree only | nothing | commits plus a summary file |
-| Reviewer | `review` | nothing (read-only) | nothing | a structured verdict file |
+| Implementer | `smol` / `default` / `slow` by package difficulty; `slow` for merge-suite fixes | its own worktree, or the main checkout in the merge tab | nothing | commits plus a summary file |
+| Reviewer | `review`; an adjudicator tries `slow` first (step 7) | nothing (read-only) | nothing | a structured verdict file |
 | Scout | `smol` | nothing (read-only) | nothing | a structured report file: codebase survey (step 3) or triage of a log, manifest or listing (step 4) |
 
 Builds, tests and worktree preparation are commands the orchestrator
@@ -51,8 +51,8 @@ briefs and the manifest refer to models by name:
 |---|---|
 | `smol` | scouts; mechanical, well-bounded packages |
 | `default` | ordinary packages |
-| `slow` | foundational, concurrent, security-sensitive or data-model packages; adjudicating re-grades |
-| `review` | every reviewer; a reviewer never shares a vendor with the implementer it grades |
+| `slow` | foundational, concurrent, security-sensitive or data-model packages; merge-suite fixes; adjudicating re-grades |
+| `review` | reviewers by default; a reviewer never shares a vendor with the implementer it grades |
 
 The catalog and the slot table are the user's, not the skill's: read
 both from `${XDG_CONFIG_HOME:-$HOME/.config}/herdr-fleet/slots.yml`.
@@ -156,10 +156,15 @@ which model, through which CLI, actually did each package.
 - Resolve the four slots (step 1). For each provider of each model in
   each slot, in order: check the binary with `command -v`, then find
   its integration target's row in `herdr integration status` (the
-  command takes no argument and lists every target), running
-  `herdr integration install <target>` when the row reads
-  `not installed` or `outdated`; the watch loop's state detection
-  comes from that integration. Drop providers that fail either check
+  command takes no argument and lists every target); the watch loop's
+  state detection comes from that integration. A row that reads
+  `not installed` or `outdated` needs `herdr integration install
+  <target>`, which rewrites that CLI's persistent configuration for
+  every later session, not just this round: collect those targets,
+  ask the user once before installing any of them, and name them in
+  the final report (step 10) as kept, since an integration is the
+  user's environment, not a round resource. A target the user
+  declines is a failed check. Drop providers that fail either check
   and models left without one. A slot with no surviving model stops
   the round here: report it and ask the user. Then check the
   cross-vendor rule is satisfiable: for the active model of each
@@ -193,8 +198,16 @@ watching in real time, so end a turn only at these points: the plan
 and worktree-disposition confirmation (step 3), the post-drop
 confirmation (step 7), an agent question that needs the user's
 authority or an exhausted slot (step 6), a merge-target suite failure
-the round cannot resolve (step 9), and the final report (step 10).
-Nothing else ends a turn: not "waiting for the agents", not a long
+the round cannot resolve (step 9), the final report (step 10), and
+every other point where this skill says to ask or tell the user and
+wait: a missing slot file (step 1), an integration install or a slot
+with no surviving model (step 2), a leftover worktree or round
+directory to decide on (step 3), a `GENUINE` preparation failure
+(step 4), a second vanish, an implementer whose fallback leaves no
+cross-vendor review model, an adjudicator or replacement reviewer
+with no model left (steps 6 and 7), a third rejecting verdict
+(step 7), and a third merge rejection or an unresolvable conflict
+(step 9). Nothing else ends a turn: not "waiting for the agents", not a long
 context, not a phase boundary. Before ending any turn, check the last
 paragraph: if it is a plan, a list of next steps, or a promise about
 work not yet done ("next I'll merge…", "then cleanup…"), do that work
@@ -221,25 +234,39 @@ genuinely turns on its contents and it is short.
 
 ## 3. Package the work
 
-**Name the round and open the ledger first**, before any scout or
+**Anchor the repo first.** The three commands that establish the
+main repo are the only git commands of the round without a recorded
+path to carry, so give them the repo path the user named or, failing
+that, your session's working directory, explicitly: record the main
+repo's absolute path (`git -C <repo-path-as-given> rev-parse
+--show-toplevel`), then, with that recorded path, the current branch
+(`git -C <main-repo-path> rev-parse --abbrev-ref HEAD`) and its head
+sha (`git -C <main-repo-path> rev-parse HEAD`). Every later `git -C`,
+every merge brief and the collision check below use that recorded
+path, and the sha becomes the round's base.
+
+**Name the round and open the ledger next**, before any scout or
 workspace exists, so that everything the round creates is
 write-ahead. Give the round a short kebab-case **round-slug**, and
 later each package its own slug. herdr agent names are 1 to 32
 characters, start with a lowercase letter, and contain only lowercase
 letters, digits, `-` and `_`; the longest derived names are
-`<round-slug>-scout-<n>` and `<slug>-merge-review`, so keep the
-round-slug to 22 characters and every package slug to 19. The package
+`<round-slug>-suite-review` and `<slug>-merge-review`, so keep the
+round-slug and every package slug to 19 characters. The package
 slug names everything the package owns: branch `feat/<slug>`,
 worktree label, implementer `<slug>`, reviewer `<slug>-review`,
 adjudicator `<slug>-adjudicate`, merge implementer `<slug>-merge`,
 merge reviewer `<slug>-merge-review`, check pane, summary and brief
 files, so `herdr agent list` reads as a status board. The round-slug
-names the scouts, the round directory, the merge tab and, when the
-round needs a fresh merge target, that branch (below). Agent names
-are server-global and branches already live in the repo: check
-`herdr agent list` and `git -C <main-repo-path> branch --list
-"feat/*"` for collisions now, the round-slug branch included, and pick
-a different slug rather than debug ambiguous targets mid-round.
+names the survey scouts `<round-slug>-scout-<n>`, the triage scout
+`<round-slug>-triage` (step 4), the suite-fix pair
+`<round-slug>-suite-fix` and `<round-slug>-suite-review` (step 9),
+the round directory, the merge tab and, when the round needs a fresh
+merge target, that branch (below). Agent names are server-global and
+branches already live in the repo: check `herdr agent list` and
+`git -C <main-repo-path> branch --list "feat/*"` for collisions now,
+the round-slug branch included, and pick a different slug rather than
+debug ambiguous targets mid-round.
 
 Resolve `"${TMPDIR:?}/herdr-fleet-<round-slug>"` to an absolute path
 (the `:?` fails closed if `TMPDIR` is unset). If that path already
@@ -265,8 +292,11 @@ before doing anything else; append a `state` event on every
 disposition; append a `slot` event on every slot resolution and
 fallback. Never rewrite an earlier line. Every resource but the round
 directory follows that write-ahead, including every agent, pane,
-tab, branch, container root pane, worktree and workspace; an
-unrecorded resource cannot be reclaimed. Record envelope:
+tab, branch, container root pane, worktree and the workspace the
+round creates for itself; a package workspace is made by
+`herdr worktree create` and is recorded on its worktree's `created`
+event (step 4), not as a resource of its own. An unrecorded resource
+cannot be reclaimed. Record envelope:
 
 ```json
 {
@@ -277,7 +307,7 @@ unrecorded resource cannot be reclaimed. Record envelope:
   "event": "intent | created | state | slot",
   "resource_key": "package/<slug>/worktree",
   "kind": "worktree | workspace | tab | pane | agent | branch | dir | slot",
-  "role": "package-container | package-implementer | package-reviewer | check-pane | review-pane | scout-container | scout | merge-container | merge-implementer | merge-reviewer | merge-check-pane | package-branch | round-dir | round-workspace | merge-target | round-archive | container-root-pane | slot",
+  "role": "package-container | package-implementer | package-reviewer | check-pane | review-pane | scout-container | scout | merge-container | merge-implementer | merge-implementer-pane | merge-reviewer | merge-reviewer-pane | merge-check-pane | package-branch | round-dir | round-workspace | merge-target | round-archive | container-root-pane | slot",
   "parent_key": "<logical parent resource_key or null>",
   "cleanup_policy": "remove-when-merged | close-aux | close-container | delete-on-success | report-only",
   "selector": {},
@@ -306,11 +336,10 @@ now per slot for the active pairs resolved in step 2.
 Now fix the round's **base** and **merge target** from the main repo's
 current branch:
 
-- Record the main repo's absolute path (`git rev-parse
-  --show-toplevel`), the current branch (`git rev-parse --abbrev-ref
-  HEAD`), and its head sha (`git rev-parse HEAD`). The sha is the
-  round's base, every worktree gets pinned to it (step 4), and the
-  path is what every later `git -C` and every merge brief references.
+- Take the main repo's absolute path, current branch and head sha
+  recorded at the start of this step. The sha is the round's base:
+  every worktree gets pinned to it (step 4) and the plan table
+  (below) shows it.
 - Record the orchestrator workspace id (step 2). Inside herdr, take
   it from `printf '%s\n' "$HERDR_WORKSPACE_ID"`. Outside herdr,
   write-ahead a workspace (`kind` `workspace`, `role`
@@ -337,8 +366,8 @@ current branch:
 
 **Understand the request** the way you would in any session: read
 the user's description, the repo's convention files, the file tree,
-and `git log`, and open the specific files a slicing decision hinges
-on. Do not walk the codebase yourself. Every question that needs
+and `git -C <main-repo-path> log`, and open the specific files a
+slicing decision hinges on. Do not walk the codebase yourself. Every question that needs
 broad reading goes to a **scout**: the host's own read-only subagent
 facility if it has one (an Explore-style agent), otherwise a herdr
 agent on the `smol` slot's active pair, in a tab of its own in the
@@ -357,7 +386,13 @@ read, so they never contend for build caches. A scout's brief is a
 file-drop (step 5) and carries: the question; the rule that it edits
 nothing, runs no build and no tests, and spawns nothing; and the
 output contract, a report at `<recorded-round-dir>/scout-<n>.md`
-with fixed sections and only the path as the reply. The report a
+with fixed sections and only the path as the reply. Scouts are fleet
+agents: wait on them as on any other, `herdr agent wait
+<round-slug>-scout-<n> --timeout 540000` for one, the step 6 wait
+block for several, then read the report file; a scout that settles
+without its report is re-prompted (the swallowed-prompt trap, step
+6), and one that fails on its model follows the slot fallback there.
+The report a
 round always needs, once per requested task: the files it will
 touch, its overlap with the other tasks, a difficulty grade with
 reasons, and the convention files, glossary and design specs the
@@ -370,9 +405,10 @@ than reading the code yourself. When a report contradicts the user's
 request (the feature already exists, the named module is gone, the
 task is far larger than described), put the contradiction in the
 plan table below and let the user decide; do not silently re-scope.
-Scouts are shut and their tabs closed (step 9 shutdown procedure)
-right after the plan is confirmed, and also when the user rejects the
-plan, which ends the round at step 10.
+Survey scouts are shut and their tabs closed (step 9 shutdown
+procedure) right after the plan is confirmed, and also when the user
+rejects the plan, which ends the round at step 10. The triage scout
+of step 4 is a different, round-long agent.
 
 Group the requested tasks into packages that can genuinely run in
 parallel, and slice aggressively: parallel wall-clock is the point of
@@ -421,8 +457,9 @@ Before each `herdr worktree create`, append `intent` for the worktree
 (`package/<slug>/worktree`, `kind` `worktree`, `role`
 `package-container`, `cleanup_policy` `remove-when-merged`), its
 branch (`package/<slug>/branch`, `kind` `branch`, `role`
-`package-branch`), and its container root pane (`role`
-`container-root-pane`, `cleanup_policy` `close-container`).
+`package-branch`, `cleanup_policy` `remove-when-merged`), and its
+container root pane (`role` `container-root-pane`, `cleanup_policy`
+`close-container`).
 
 ```bash
 herdr worktree create --cwd <main-repo-path> --branch feat/<slug> --base <sha> --label <slug> --no-focus
@@ -459,13 +496,14 @@ to a log in the round directory, writes a report whose first line is
 printing one **marker** line unique to this run, which is what you
 wait on. Skeleton, with `<sha>` the base sha for preparation and the
 candidate sha in step 8, and `<attempt>` a counter you increment per
-run so a stale marker from a previous run can never match:
+run so neither a stale marker nor a stale report from a previous run
+can ever be taken for this one:
 
 ```bash
 #!/usr/bin/env bash
 set -o pipefail
 log="<recorded-round-dir>/<slug>-<phase>-<sha>-<attempt>.log"
-report="<recorded-round-dir>/<slug>-<phase>-<sha>.md"
+report="<recorded-round-dir>/<slug>-<phase>-<sha>-<attempt>.md"
 { cd "<worktree-path>" && <command-1> && <command-2>; } >"$log" 2>&1
 rc=$?
 { if [ "$rc" -eq 0 ]; then echo "PASS <sha>"; else echo "FAIL <sha>"; fi; echo; cat "$log"; } >"$report"
@@ -479,7 +517,7 @@ for you):
 ```bash
 herdr pane run <check-pane-id> "bash <recorded-round-dir>/<slug>-<phase>-<sha>-<attempt>.sh"
 herdr pane wait-output <check-pane-id> --source recent-unwrapped --match "FLEET <slug> <phase> <sha> <attempt> exit=" --timeout 540000
-head -n 1 <recorded-round-dir>/<slug>-<phase>-<sha>.md
+head -n 1 <recorded-round-dir>/<slug>-<phase>-<sha>-<attempt>.md
 ```
 
 `--source recent-unwrapped` is required: the default `recent`
@@ -509,21 +547,26 @@ The preparation script (`<phase>` `prep`) carries:
   attempt number, not evidence that the worktree is broken.
 - No build and no test run: preparation only.
 
-You never read a failing log yourself. A `FAIL` report goes to a
-**triage scout**: a scout started exactly as in step 3 (its own tab
-in the orchestrator workspace, write-ahead, the `smol` slot's active
-pair), briefed by file-drop with the report path and one question,
-and shut once its answer is read. Its answer is a file with a fixed
-first line, `TRANSIENT`, `GENUINE` or `MISCONFIGURED`, followed by
-the failing command, the decisive lines of the log quoted by line
-number, and, for `MISCONFIGURED`, the corrected command. `TRANSIENT`
-(network, a cache lock, a flaky download) is a rerun with the next
-attempt number. `MISCONFIGURED` on preparation is evidence against
-the scout report, not against the worktree: take the corrected
-command and rerun. `GENUINE` on preparation means the repo does not
-build at the base sha; stop and tell the user. One triage scout may
-serve the whole round, re-prompted per report, as long as it stays
-listed; it is a read-only agent and never touches a worktree.
+You never read a failing log yourself. A `FAIL` report goes to the
+**triage scout**, `<round-slug>-triage`: one read-only agent for the
+whole round, started exactly like a step 3 scout (its own tab in the
+orchestrator workspace, write-ahead, the `smol` slot's active pair)
+the first time a report needs it, and kept: every later report is a
+fresh file-drop prompt to the same agent, waited on with `herdr agent
+wait` as in step 3. It is shut, tab included, in step 10, or earlier
+only when it vanishes or loses its model (step 6 traps), in which
+case the next report starts it again. It never touches a worktree.
+Each prompt carries one report path and one question, and names the
+answer file, one per report so answers never overwrite each other:
+`<recorded-round-dir>/triage-<slug>-<phase>-<sha>-<attempt>.md`,
+with a fixed first line, `TRANSIENT`, `GENUINE` or `MISCONFIGURED`,
+followed by the failing command, the decisive lines of the log quoted
+by line number, and, for `MISCONFIGURED`, the corrected command.
+`TRANSIENT` (network, a cache lock, a flaky download) is a rerun with
+the next attempt number. `MISCONFIGURED` on preparation is evidence
+against the scout report, not against the worktree: take the
+corrected command and rerun. `GENUINE` on preparation means the repo
+does not build at the base sha; stop and tell the user.
 Resolution contends for the same shared caches as builds, so prepare
 one worktree at a time and wait for its marker before starting the
 next. The check pane stays open, at an idle shell, until step 8 needs
@@ -561,7 +604,7 @@ brief per package at `<recorded-round-dir>/<slug>.md`; prompt with a
 one-liner:
 
 ```bash
-herdr agent prompt <slug> "Read <recorded-round-dir>/<slug>.md and complete the package it describes."
+herdr agent prompt <slug> "Read <recorded-round-dir>/<slug>.md and complete the package it describes. Summary file for this turn: <recorded-round-dir>/<slug>-summary-1.md"
 ```
 
 Long text sent through `agent prompt` risks wrapping and paste-mode
@@ -591,20 +634,31 @@ The brief must carry:
 - Commit discipline: Conventional Commits, imperative lowercase subject
   ≤72 chars, no Co-Authored-By trailers or generation watermarks.
   Commit on the package branch. Do not push.
-- **End-of-turn contract**: write `<recorded-round-dir>/<slug>-summary.md`
-  whose first line is exactly `DONE` or `QUESTION`, followed by a
-  summary of changes with file references, anything skipped or
-  uncertain, and, after `QUESTION`, the question itself; reply with
-  only the path. You read the first line on every settle (step 6): a
-  `QUESTION` package does not enter the gates, costs no correction
-  cycle, and gets its answer from the brief's context if that
-  decides it, otherwise from the user; a missing summary file is a
-  swallowed contract, re-prompt for it.
+- **End-of-turn contract**: at the end of every turn, write the
+  summary file named in the prompt that started that turn, whose
+  first line is exactly `DONE` or `QUESTION`, followed by a summary
+  of changes with file references, anything skipped or uncertain,
+  and, after `QUESTION`, the question itself; reply with only the
+  path. Every prompt you send an implementer (the first one, a
+  send-back, an answer, a re-brief after a restart or fallback) names
+  a fresh path, `<recorded-round-dir>/<agent-name>-summary-<n>.md`
+  with `<n>` counted up per prompt, so a stale summary from an
+  earlier turn can never be read as this one's. You read the first
+  line on every settle (step 6): a `QUESTION` package does not enter
+  the gates, costs no correction cycle, and gets its answer from the
+  brief's context if that decides it, otherwise from the user; a
+  missing file at the path the last prompt named is a swallowed
+  contract, re-prompt for it. Merge implementers (step 9) follow the
+  same contract under their own agent names; their conclusion still
+  comes from git and the merge reviewer's verdict, the summary only
+  carries `DONE`, `QUESTION` and the notes.
 
 ## 6. Watch the round: this is your job now
 
 Between briefing and the final merge, the orchestrator's whole job is
-the watch loop. Do not end the turn to "wait for the agents", and do
+the watch loop; the wait block and the traps below serve every fleet
+agent, the scouts of steps 3 and 4 and the merge agents of step 9
+included. Do not end the turn to "wait for the agents", and do
 not drift into side work; an unwatched fleet stalls: a `blocked` agent
 burns wall-clock until someone answers it, and a crashed agent
 silently drops its package.
@@ -623,10 +677,13 @@ bash -c '
 for a in <unsettled agent names>; do herdr agent wait "$a" --timeout 540000 & done
 <for the check script in flight, if any:> herdr pane wait-output <check-pane-id> --source recent-unwrapped --match "<its marker prefix>" --timeout 540000 &
 wait -n; kill $(jobs -p) 2>/dev/null'
-herdr agent list
+herdr agent list | jq -c '[.result.agents[] | {name, agent_status, pane_id}]'
 ```
 
-Wake on the first event, sweep with `herdr agent list`, act, then
+Wake on the first event, sweep with that projected `herdr agent
+list` (the full listing carries session ids, titles and paths for
+every agent, a page of context per wake that the loop never needs;
+the sweep is named there in the rest of this section), act, then
 block again on whatever is still unsettled. Details that keep the
 block safe, verified against a live fleet:
 
@@ -664,8 +721,8 @@ and continue the round rather than ending the turn; a long session is
 not a reason to stop.
 
 What to read on a wake depends on the state. A settled implementer's
-decisions come from git and its summary file's first line (step 5),
-not from its pane. Read pane output only for an agent that is
+decisions come from git and the first line of the summary file its
+last prompt named (step 5), not from its pane. Read pane output only for an agent that is
 `blocked`, `unknown`, `working` with no change across several sweeps,
 or settled without producing what its contract requires, and then
 the visible screen first:
@@ -703,19 +760,24 @@ Known traps and how to handle them:
   the CLI itself (expired login, subscription exhausted). Take the
   next surviving pair: the same model's next provider first, then the
   slot's next model. For any agent in a reviewer role (`<slug>-review`,
-  `<slug>-adjudicate`, `<slug>-merge-review`), whatever slot it runs
-  on, skip every model whose vendor equals that of the implementer it
-  grades; the vendor rule follows the role, not the slot name. Append
-  a `slot` event naming the old and new pair, start the replacement
-  in the same pane with the new kind and arguments, write-ahead and
-  `created` as usual, and re-brief it with
-  the original brief path plus one instruction: read
-  `git log <base-sha>..HEAD` and `git status` in the worktree first
-  and continue from the committed state. Every later start on that
-  slot uses the new pair directly; a failed pair is never retried
-  this round. A slot whose pairs are exhausted ends the turn with the
-  question, after doing everything on this wake that does not depend
-  on it.
+  `<slug>-adjudicate`, `<slug>-merge-review`, `<round-slug>-suite-review`),
+  whatever slot it runs on, skip every model whose vendor equals that
+  of the implementer it grades; the vendor rule follows the role, not
+  the slot name. An adjudicator's candidate list is the `slow` slot
+  followed by the `review` slot (step 7), so it is exhausted only when
+  both are. Append a `slot` event naming the old and new pair, start
+  the replacement in the same pane with the new kind and arguments,
+  write-ahead and `created` as usual, and re-brief it by role, with
+  the original brief path in every case: an implementer is told to
+  read `git log <base-sha>..HEAD` and `git status` in its checkout
+  first and continue from the committed state, and gets the next
+  summary path (step 5); a reviewer or adjudicator is told to grade
+  the same recorded candidate sha afresh and write the same verdict
+  path; a scout is told to answer the same question afresh to the
+  same report path. Every later start on that slot uses the new pair
+  directly; a failed pair is never retried this round. A slot whose
+  pairs are exhausted ends the turn with the question, after doing
+  everything on this wake that does not depend on it.
 - **Swallowed first prompt.** Some agents (droid, notably) eat a prompt
   sent during their startup/welcome screen. If an agent is `idle`
   shortly after start with no meaningful output and no error on
@@ -749,8 +811,8 @@ Known traps and how to handle them:
   from `herdr agent list` and the pane is back at a shell, the agent
   exited or crashed. Check `git -C <worktree-path> log` for what
   actually landed, then `herdr agent start` a fresh agent in the same
-  pane, on the same pair, and re-brief it with what is already
-  committed. Budget one such restart per package: a second vanish on
+  pane, on the same pair, and re-brief it by role as in the slot
+  fallback above. Budget one such restart per package: a second vanish on
   the same pair is a dead pair, handled by the slot fallback above,
   and a vanish after that goes to the user with the status board.
 - Never send a new prompt to a `working` agent: it lands mid-turn and
@@ -846,7 +908,7 @@ brief is a file-drop like any other and carries:
       }
     ],
     "assumption_check": {
-      "assumption": "<the unvalidated shared assumption, or null>",
+      "assumption": "<the unvalidated shared assumption, or null with status not-applicable>",
       "relied_on_by": ["<impl and test locations>"],
       "consequence_if_false": "<...>",
       "external_evidence": "<sources inspected or missing, and applicability>",
@@ -883,9 +945,12 @@ observed real-system response; matching mocks, copied fixtures, and
 reviewer agreement do not validate the assumption. Designing a check
 does not validate the assumption either: `status` says whether it was
 only designed or actually executed, with results cited when
-available. If no such assumption is found, the object documents the
-candidates examined and the external evidence that validates them, or
-why none applies; the reviewer must not invent one to fill the field.
+available. If no such assumption is found, `assumption` is `null`,
+`status` is `not-applicable`, and `external_evidence` documents the
+candidates examined and the evidence that validates them, or why none
+applies; the reviewer must not invent one to fill the field, and the
+validation below rejects any other combination of a null assumption
+with a status.
 Missing evidence alone is not a proven defect; any resulting finding
 is classified by the priority rules above. Checks requiring execution
 go through a check pane within the round's serial queue; the design
@@ -917,8 +982,14 @@ jq '{candidate_sha, overall_correctness, blocking: [.findings[] | select(.priori
 A verdict that is missing, that `jq` cannot parse, that fails the
 validation, or that names a sha other than the recorded one is not a
 verdict: send it back to the reviewer for correction, at no
-correction-cycle cost; a second malformed verdict from the same pair
-is a dead pair, handled by the slot fallback (step 6). The projection
+correction-cycle cost. A second malformed verdict from the same
+reviewer replaces that reviewer for this package only: a model that
+writes bad JSON is alive, so its pair is not marked failed for the
+round. Exit the agent as in the slot fallback (step 6), keep the
+pane, start `<slug>-review` again on the next `review` model that
+satisfies the vendor rule, append a `slot` event whose detail names
+the malformed output and this package, and brief it afresh; with no
+such model left, the package goes to the user. The projection
 above is all of the verdict you read; the titles and locations are
 enough to route it, and the bodies stay in the file for the
 implementer.
@@ -926,9 +997,10 @@ implementer.
 You adjudicate. With both gates' results in hand, decide accept, send
 back, or drop; that call needs round-level context (merge order,
 budgets, how the packages interact) that only you hold. Send-back is
-a short prompt: the verdict file's path, the check report's path if
-it failed, and the instruction to fix every P0 and P1 there and any
-P2 worth taking; do not restate the findings. A blocking finding is
+a short prompt: the verdict file's path, the check report's path and
+its triage file's path if it failed, the next summary path (step 5),
+and the instruction to fix every P0 and P1 there and any P2 worth
+taking; do not restate the findings. A blocking finding is
 cleared by a fix or by a reviewer verdict; reclassifying it yourself
 is how a round quietly ships a rejected package. When a re-grade
 surfaces a likely-blocking issue that sat unchanged in the prior
@@ -1047,10 +1119,18 @@ close this tab's root pane, since `herdr tab close` reclaims it.
 
 The two roles used here are the same Implementer and Reviewer roles as
 in steps 5 and 7, started fresh in merge-tab panes with the main
-checkout as cwd. A merge implementer runs on the slot of the package
-whose merge it resolves (`default` at least, never `smol`); a merge
-reviewer's pair is chosen as in step 7 against that merge
-implementer's vendor. Every merge-review brief and verdict carries
+checkout as cwd. A conflict-merge implementer (`<slug>-merge`, item
+2) runs on the slot of the package whose merge it resolves (`default`
+at least, never `smol`); the suite-fix implementer
+(`<round-slug>-suite-fix`, item 3) runs on `slow`, since a failure
+that only appears when the packages meet is foundational by
+definition. A merge reviewer's pair (`<slug>-merge-review` or
+`<round-slug>-suite-review`) is chosen as in step 7 against the
+vendor of the implementer it grades. Each merge agent's pane gets its
+own write-ahead role (`merge-implementer-pane`, `merge-reviewer-pane`,
+`kind` `pane`, `cleanup_policy` `close-aux`) beside the agent's
+(`merge-implementer`, `merge-reviewer`, `kind` `agent`,
+`cleanup_policy` `close-aux`). Every merge-review brief and verdict carries
 the same format and the correlated-failure requirement from step 7,
 applied to the combined behavior under review. Merge-phase fixes
 share one budget of 2 correction cycles for the whole merge target,
@@ -1061,7 +1141,11 @@ with the report paths.
 1. Re-check the main repo: the tree still clean
    (`git -C <main-repo-path> status --porcelain`) and HEAD still on
    the branch recorded in step 3
-   (`git -C <main-repo-path> rev-parse --abbrev-ref HEAD`); hours may
+   (`git -C <main-repo-path> rev-parse --abbrev-ref HEAD`), or, when
+   the recorded branch is the literal `HEAD` of a detached checkout,
+   `git -C <main-repo-path> rev-parse HEAD` still equal to the base
+   sha, since `--abbrev-ref` prints `HEAD` for any detached commit
+   and would pass a moved checkout; hours may
    have passed, and uncommitted edits or a mid-round branch switch
    would ride into the merges; surface a mismatch and go to step 10
    instead of working around it. If the recorded branch itself is the
@@ -1086,8 +1170,8 @@ with the report paths.
    is bookkeeping and yours to run; it gets no review. A conflicted
    merge is implementation in the main checkout, not the package
    worktree. Split a pane off the merge tab's root pane; write-ahead
-   the pane and the agent (`role` `merge-implementer`, `kind` `pane` /
-   `agent`, `cleanup_policy` `close-aux`):
+   the pane (`role` `merge-implementer-pane`) and the agent (`role`
+   `merge-implementer`):
 
    ```bash
    herdr pane split <merge-root-pane-id> --direction down --cwd <main-repo-path> --no-focus
@@ -1095,19 +1179,32 @@ with the report paths.
    ```
 
    Brief it by file-drop to resolve and commit the merge, with the
-   package brief's path for intent. Do not reuse the worktree-rooted
+   package brief's path for intent and the summary path of step 5.
+   Do not reuse the worktree-rooted
    implementer: a path written in a brief does not change a live
    agent's cwd, and the conflict index (`MERGE_HEAD`) exists only in
    the main checkout. Exactly one agent may write the main checkout at
    a time. Once it settles, require a clean committed merge, record
    `candidate_sha=$(git -C <main-repo-path> rev-parse HEAD)`, and
    dispatch `<slug>-merge-review` in another pane split the same way
-   off the merge tab's root (write-ahead `role` `merge-reviewer`) to
+   off the merge tab's root (write-ahead `role` `merge-reviewer-pane`
+   / `merge-reviewer`) to
    grade `git diff <pre_merge_sha> <candidate_sha>` read-only,
    concentrating on the conflict resolution and combined behavior.
    Accept only a verdict naming that candidate sha with no blocking
    finding. Start the next merge only after this review passes and
-   the pair is shut (shutdown procedure below).
+   the pair is shut (shutdown procedure below). A conflict the round
+   cannot resolve (the implementer settles with `QUESTION` or is
+   blocked on a user decision, a rejecting verdict spends the merge
+   budget, or a merge reviewer has no model left) must not leave the
+   checkout mid-merge: shut the pair, then
+   `git -C <main-repo-path> merge --abort`, require HEAD to equal
+   `pre_merge_sha` and the tree to be clean, append a `state` event
+   on `package/<slug>/branch` with `status` `retained` and the
+   conflicting files as detail, and go to step 10, where the report
+   names the branch and the conflict; the package's worktree and
+   branch stay in place, and no later package merges after it this
+   round.
 3. Run the repo's full build and test suite on the merge target as a
    check script in the merge check pane (`<slug>` the round-slug,
    `<phase>` `suite`, `<sha>` the merge target's current sha): the
@@ -1119,31 +1216,42 @@ with the report paths.
    marker appears, require `git -C <main-repo-path> status
    --porcelain` to be empty and both `git -C <main-repo-path>
    rev-parse HEAD` and `git -C <main-repo-path> rev-parse
-   <merge-target>` to equal the sha the script names. A `PASS` whose
-   post-run check fails is not a pass: a build that mutates tracked
-   files has produced an unverified tree, so treat it as a `FAIL`
-   whose report is the `git status` output, and let the merge
-   implementer below decide whether those files are generated output
-   to commit or a build to fix; the rerun binds to the new sha. While
-   the suite runs, nothing else touches the main checkout: no merge
-   implementer is live and you run no git there. Read the report's
-   first line. On `FAIL`, the triage scout (step 4) reads the report:
-   `TRANSIENT` is a rerun on the same sha; otherwise record
-   `pre_fix_sha=$(git -C <main-repo-path> rev-parse HEAD)` and send
-   the report path and the triage file's path by file-drop to one
-   merge implementer rooted in the main checkout (split and
-   write-ahead as in item 2 if needed).
-   Once it settles, require a clean tree and a new commit, record
+   <merge-target>` to equal the sha the script names. While the suite
+   runs, nothing else touches the main checkout: no merge implementer
+   is live and you run no git there. When the marker appears, run the
+   post-run binding, then read the report's first line; three
+   outcomes follow.
+   `PASS` with a clean post-run binding is a green suite.
+   `PASS` with a dirty tree is not a pass: a build that mutates
+   tracked files has produced an unverified tree. This path bypasses
+   the triage scout, since the log shows nothing wrong: write
+   `git -C <main-repo-path> status --porcelain` to
+   `<recorded-round-dir>/<round-slug>-suite-<sha>-<attempt>-dirty.md`
+   and hand that path to the suite-fix implementer below, which
+   decides whether those files are generated output to commit or a
+   build to fix; the rerun binds to the new sha.
+   `FAIL` goes to the triage scout (step 4): `TRANSIENT` is a rerun
+   on the same sha; otherwise the report path and the triage file's
+   path go to the suite-fix implementer below.
+   The suite-fix implementer is `<round-slug>-suite-fix`, on the
+   `slow` slot's active pair, split and written ahead as in item 2
+   with the roles named above, rooted in the main checkout; the pairs
+   of item 2 are already shut by now, so it is always a fresh start.
+   Record `pre_fix_sha=$(git -C <main-repo-path> rev-parse HEAD)`,
+   brief it by file-drop with the paths above and the summary path
+   of step 5, and once it settles require a clean tree and a new
+   commit, record
    `candidate_sha=$(git -C <main-repo-path> rev-parse HEAD)`, then
-   dispatch a merge reviewer (as in item 2) to grade the exact
-   `git diff <pre_fix_sha> <candidate_sha>` read-only. Accept only a
-   verdict naming that candidate sha with no blocking finding and,
-   after the pair is shut (shutdown procedure below), run the suite
-   script again on the new sha. Handle one implementer/reviewer pair
-   at a time. If a merge implementer is blocked on a user decision,
-   the merge budget is spent, or the failure cannot be resolved this
-   round, keep the failing report, leave the merge-target red-suite
-   fix state untouched, and go to step 10.
+   dispatch `<round-slug>-suite-review` (as in item 2) to grade the
+   exact `git diff <pre_fix_sha> <candidate_sha>` read-only. Accept
+   only a verdict naming that candidate sha with no blocking finding
+   and, after the pair is shut (shutdown procedure below), run the
+   suite script again on the new sha with the next attempt number.
+   Handle one implementer/reviewer pair at a time. If the suite-fix
+   implementer is blocked on a user decision, the merge budget is
+   spent, or the failure cannot be resolved this round, keep the
+   failing report, leave the merge-target red-suite fix state
+   untouched, and go to step 10.
 
 Throughout, the main checkout changes hands whole: exactly one agent
 or one check script works in it at a time, and while one does, run no
@@ -1189,7 +1297,8 @@ when a later invocation finds a leftover round directory (step 3),
 and consume that manifest. A leftover from another invocation needs
 the user's decision before anything is destroyed; this round's own
 abort does not. Shut still-live agents and auxiliary panes with the
-step 9 procedure first, then close still-live scout tabs and merge
+step 9 procedure first, the triage scout excepted (it is the last to
+go, below), then close still-live survey-scout tabs and the merge
 tab with `herdr tab close <tab-id>`. Do not wait for a green suite to
 reclaim a package that is already merged: its commits are on the
 merge target, and step 9.3 fixes in the main checkout, so that
@@ -1207,16 +1316,20 @@ create response is an audit candidate, not automatic destructive
 authority.
 
 The reconciliation itself is reading, and for a leftover round from
-another invocation it is a lot of it: a triage scout (step 4) reads
-that manifest, `herdr agent list`, `herdr worktree list` and the
-branch list, and returns one table, one row per recorded resource:
-key, role, cleanup policy, recorded id, whether it is live, its
-occupant or git state, and the last recorded status. You decide each
-disposition from the table. The table is evidence for deciding, not
-for destroying: before any remove, close or delete below, re-run the
-specific check that step names (`git status --porcelain`, the sha
+another invocation it is a lot of it: the triage scout (step 4; start
+it now if none is live) reads that manifest, `herdr agent list`,
+`herdr worktree list` and the branch list, and returns one table at
+`<recorded-round-dir>/triage-reconcile-<n>.md`, one row per recorded
+resource: key, role, cleanup policy, recorded id, whether it is live,
+its occupant or git state, and the last recorded status. You decide
+each disposition from the table. The table is evidence for deciding,
+not for destroying: before any remove, close or delete below, re-run
+the specific check that step names (`git status --porcelain`, the sha
 comparisons, `herdr pane process-info`) yourself on that one
-resource; a scout's row never substitutes for it.
+resource; a scout's row never substitutes for it. Once the table is
+read and every disposition below is decided, the triage scout is done
+for the round: shut it and close its tab with the step 9 procedure
+before item 3, whose workspace close requires every round tab gone.
 
 1. Per package, remove the worktree only when all of these hold:
    `git -C <worktree-path> status --porcelain` is empty, the branch
@@ -1249,7 +1362,9 @@ resource; a scout's row never substitutes for it.
 3. Account for the rest of this round's residue from the manifest:
    round directory, package branches, any merge-target branch this
    round created, the scout tabs, the merge tab and its root pane,
-   and any workspace this round created. A `round-workspace` event
+   and the orchestrator workspace if this round created it (package
+   workspaces went with their worktrees in item 1 and are never
+   closed on their own). A `round-workspace` event
    means the round made the workspace (step 3): once every tab the
    round added is closed and every remaining pane in it holds only an
    idle shell (`herdr pane process-info`), `herdr workspace close
@@ -1263,7 +1378,8 @@ resource; a scout's row never substitutes for it.
    or restart noted), correction cycles used, quick-check evidence,
    and the reviewer's `assumption_check` status with the assumption
    in one line; plus anything dropped, a per-slot summary of which
-   pairs were used and which failed, and the merge budget used. Build
+   pairs were used and which failed, any integration the round
+   installed in step 2 (kept), and the merge budget used. Build
    every item except the round directory from the still-live manifest
    as one of `removed`, `retained(<reason>)`, or
    `cleanup_failed(<error>)`. Archive the round directory before you
@@ -1349,7 +1465,10 @@ finding is cleared by a fix or a reviewer verdict, never by
 orchestrator reclassification, and correction counters, package and
 merge alike, only go up; exactly one heavy build runs at a time; a
 dead pair is replaced from the slot's next pair and recorded, never
-retried, and a package restarts a vanished agent at most once; the
+retried, a reviewer that writes malformed verdicts is replaced for
+its package rather than retired, and a package restarts a vanished
+agent at most once; a conflicted merge the round cannot resolve is
+aborted, never left half-done; the
 round ends on a local branch and publishing stays with the user; a
 worktree holding dirty or unmerged work stays in place; a finished
 agent session closes before its package or merge task is considered
