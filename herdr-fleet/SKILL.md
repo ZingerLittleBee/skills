@@ -447,9 +447,12 @@ creating anything else (skip only if the user already said to run
 unattended): packages, branch names, merge order, merge target, slot
 per package, the active pair per slot from step 2, any scout
 contradictions, and those worktree decisions. The user may override
-slots here ("this round, codex only"); apply the override by
-filtering the slot's models, not by editing the slot file, and append
-a `slot` event for each slot that changed.
+slots here ("this round, codex only", "this round, `slow` runs on
+claude-fable-5.1-xhigh"): apply the override by filtering the slot's
+models or by replacing its list with other catalog models, never by
+editing the slot file or inventing a model the catalog lacks; a
+replacement passes the same step 2 checks (binary, integration,
+cross-vendor review), and each slot that changed gets a `slot` event.
 
 ## 4. One worktree per package
 
