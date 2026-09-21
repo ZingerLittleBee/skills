@@ -38,6 +38,7 @@ again and copies a fresh token from **Settings → MCP Access**.
 | `DISPATCH_TARGET_REQUIRED` | Non-draft local task with no `desktopInstanceId`. | `list_desktop_instances`, then repeat with an `installationId`. |
 | `DISPATCH_TARGET_OFFLINE` | The named instance is not online in this organization. | Pick another instance from `list_desktop_instances`. |
 | `DISPATCH_TARGET_NOT_OWN` | The named instance is signed in as another member. | Pick one of the caller's own instances. |
+| `TASK_RUNTIME_MIXED` | 400 `INVALID_ARGUMENT`. A stored task still names both cloud platforms and local platforms (xhs, Douyin, Kuaishou). | Open it in the MuseDAM panel and save it once so it is split into one task per runtime; the original id is replaced. Then `list_publishing_tasks` on the view the task was in (`draft` or `scheduled`): the siblings are separate rows with the same `taskName`, one per `taskRuntime` with the matching `platformTypes`. `groupTaskIds` is not on those views. The save is possible only for a draft or for a scheduled task the panel still lets the user edit: a submitted native schedule (ADR-0040) is locked, and a history row (immediate or past-due) is editable only as a resettable native-schedule failure, so for those create the task again. |
 | `REELS_SCHEDULE_UNSUPPORTED` | Reels cannot be scheduled. | Use `publish_now`, or a `video` task. |
 | `REELS_DRAFT_UNSUPPORTED` | Reels cannot be drafts. | Use `publish_now`, or a `video` draft. |
 | `SCHEDULED_TIME_REQUIRED` | `mode` is `schedule` without `scheduledTime`. | Add it. |

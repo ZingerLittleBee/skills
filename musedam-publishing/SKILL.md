@@ -45,14 +45,16 @@ JSON bodies of a search, draft, submit sequence are in
    `assetId` and `kind`. An `image_text` task takes images only; `video` and
    `reels` need at least one video. Discovery does not check platform limits
    such as size or duration.
-3. **Runtime.** If any chosen account is Xiaohongshu (`xhs`), Douyin, or
-   Kuaishou, the whole task runs on the user's Desktop app. A non-draft task
-   for it needs `desktopInstanceId`, which is the `installationId` of an
-   entry from `list_desktop_instances`. That tool lists only the caller's own
-   online instances, so anything it returns is valid. If it returns nothing,
-   save a draft and tell the user to open the Desktop app, or ask how they
-   want to proceed. Cloud platforms (TikTok, YouTube, Facebook, Instagram, X,
-   LinkedIn) take no instance; omit the field.
+3. **Runtime.** The runtime follows the platform. Xiaohongshu (`xhs`), Douyin,
+   and Kuaishou run on the user's Desktop app; Facebook, Instagram, X,
+   YouTube, TikTok, and LinkedIn run in the cloud. A create that names both
+   groups becomes one task per runtime. A non-draft local task (Xiaohongshu,
+   Douyin, or Kuaishou) needs
+   `desktopInstanceId`, which is the `installationId` of an entry from
+   `list_desktop_instances`. That tool lists only the caller's own online
+   instances, so anything it returns is valid. If it returns nothing, save a
+   draft and tell the user to open the Desktop app, or ask how they want to
+   proceed. Cloud tasks take no instance; omit the field.
 4. **Mode.** `draft` stores the task, `schedule` needs `scheduledTime`,
    `publish_now` submits at once. Reels accept `publish_now` only; a reel the
    user wants to prepare ahead becomes a `video` draft instead.
@@ -62,9 +64,11 @@ JSON bodies of a search, draft, submit sequence are in
    interpreted, so resolve the user's zone before you call. `timezone` is an
    optional IANA name for display and never moves the instant.
 5. **Create.** `create_publishing_task`. The result's `data.taskIds` is a
-   list: one call can fan out into several tasks (Facebook splits per Page).
-   Report every id. A `schedule` or `publish_now` create is already
-   submitted; a `draft` is not.
+   list: one call can fan out into several tasks (Facebook splits per Page,
+   and a mix of cloud and local platforms creates one task per runtime;
+   two Facebook Pages plus one Xiaohongshu account is three tasks). Report
+   every id. A `schedule` or `publish_now` create is already submitted; a
+   `draft` is not.
 6. **Submit drafts.** `publish_publishing_task` once per task id you intend
    to send, with `mode` `schedule` or `publish_now` and the same
    `scheduledTime` rules. A local task leaving draft passes an online
@@ -76,6 +80,9 @@ JSON bodies of a search, draft, submit sequence are in
 ## Inspecting and retrying
 
 `list_publishing_tasks` shows the `draft`, `scheduled`, or `history` view.
+A `history` row folds one publish-action group and may hold a cloud task and
+a local task; its `taskRuntimes` maps every task id to its runtime and
+`taskRuntime` is present only when they all share one, as on create.
 `get_publishing_task` returns the task with `dispatchTarget.online` and an
 `executions` list; each execution row carries `status`, `platformAccountId`,
 `attemptNumber`, a safe `errorMessage`, and `platformLinks`. Diagnostics
@@ -100,6 +107,7 @@ The reasons that change your next call:
 | --- | --- |
 | `DISPATCH_TARGET_REQUIRED` | `list_desktop_instances`, then repeat with `desktopInstanceId` set to an `installationId`. |
 | `DISPATCH_TARGET_OFFLINE`, `DISPATCH_TARGET_NOT_OWN` on create or submit | Same, choosing another instance. On retry there is no argument to fix it: the task is edited in the panel. |
+| `TASK_RUNTIME_MIXED` | The task still names both cloud and local platforms. The user opens it in the panel and saves once so it splits into one task per runtime; the original id is replaced. Then `list_publishing_tasks` on the view the task was in (`draft` or `scheduled`): the siblings are separate rows with the same `taskName`, one with `taskRuntime` `cloud` and the cloud `platformTypes`, one with `local` and the local ones. `groupTaskIds` is not on those views. The save is possible only for a draft or for a scheduled task the panel still lets the user edit: a submitted native schedule (ADR-0040) is locked, and a history row (immediate or past-due) is editable only as a resettable native-schedule failure, so for those create the task again. |
 | `SCHEDULED_TIME_NOT_OFFSET_AWARE`, `SCHEDULED_TIME_INVALID` | Rebuild `scheduledTime` with an offset and a real calendar date. |
 | `SCHEDULE_TIME_OUT_OF_RANGE` | Move the time into the 2-hour to 14-day window, or switch to `publish_now`. |
 | `REELS_SCHEDULE_UNSUPPORTED`, `REELS_DRAFT_UNSUPPORTED` | Reels are `publish_now` only; offer a `video` task for anything else. |
