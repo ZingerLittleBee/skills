@@ -161,12 +161,20 @@ which model, through which CLI, actually did each package.
   instead of working around it.
 - Resolve the slots (step 1): `smol`, `default`, `slow` and `review`
   are required; `hard` is optional, and when it is absent or empty no
-  package may be graded `hard` this round. For each provider of each model in
-  each slot, in order: check the binary with `command -v`, then find
-  its integration target's row in `herdr integration status` (the
-  command takes no argument and lists every target); the watch loop's
-  state detection comes from that integration. A row that reads
-  `not installed` or `outdated` needs `herdr integration install
+  package may be graded `hard` this round. For each provider of each
+  model in each slot, in order, take the three names from the kind
+  table and use each once: `command -v <binary>`; the `<integration
+  target>` row of `herdr integration status` (the command takes no
+  argument and lists every target); later, `herdr agent start --kind
+  <kind>`. A provider fails only when that binary is missing or that
+  status row cannot be brought to `current`. The two rows whose names
+  differ:
+  - `agy`: `command -v agy`, status row `antigravity-cli`, `--kind agy`
+  - `cursor`: `command -v cursor-agent`, status row `cursor`, `--kind cursor`
+
+  The watch loop's state detection comes from that integration. A
+  row that reads `not installed` or `outdated` needs `herdr
+  integration install
   <target>`, which rewrites that CLI's persistent configuration for
   every later session, not just this round: collect those targets,
   ask the user once before installing any of them, and name them in
