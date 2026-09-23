@@ -28,7 +28,7 @@ and what it hands back:
 | Role | Slot | Writes | Spawns | Hands back |
 |---|---|---|---|---|
 | Orchestrator | the user's own session | manifest, briefs, check scripts | every fleet agent | the final report |
-| Implementer | `smol` / `default` / `slow` / `hard` by package difficulty; `slow` for merge-suite fixes | its own worktree, or the main checkout in the merge tab | nothing | commits plus a summary file |
+| Implementer | `smol` / `default` / `slow` / `hard` by package difficulty; `ui` for UI packages; `slow` for merge-suite fixes | its own worktree, or the main checkout in the merge tab | nothing | commits plus a summary file |
 | Reviewer | `review`; an adjudicator tries `slow` first (step 7) | nothing (read-only) | nothing | a structured verdict file |
 | Scout | `smol` | nothing (read-only) | nothing | a structured report file: codebase survey (step 3) or triage of a log, manifest or listing (step 4) |
 
@@ -53,6 +53,7 @@ briefs and the manifest refer to models by name:
 | `default` | ordinary packages |
 | `slow` | foundational, concurrent, security-sensitive or data-model packages; merge-suite fixes; adjudicating re-grades |
 | `hard` | optional: the rare package that is beyond `slow` (a novel algorithm, a cross-cutting change with an unsettled design, a bug with no reproduction); the most capable and most expensive models, never assigned by default |
+| `ui` | optional: UI packages (step 5), in place of the slot their grade maps to; the models the user trusts most with frontend work |
 | `review` | reviewers by default; a reviewer never shares a vendor with the implementer it grades |
 
 The catalog and the slot table are the user's, not the skill's: read
@@ -96,6 +97,7 @@ slots:
   default: [gpt-6-astra-medium, claude-opus-5]
   slow:    [gpt-6-astra-xhigh, claude-opus-5]
   hard:    [claude-fable-5.1-xhigh, gpt-6-astra-xhigh]
+  ui:      [claude-opus-5]
   review:  [grok-4.6, claude-opus-5]
 ```
 
@@ -160,8 +162,9 @@ which model, through which CLI, actually did each package.
 - The main repo's working tree must be clean; surface a dirty tree
   instead of working around it.
 - Resolve the slots (step 1): `smol`, `default`, `slow` and `review`
-  are required; `hard` is optional, and when it is absent or empty no
-  package may be graded `hard` this round. For each provider of each
+  are required; `hard` and `ui` are optional. When `hard` is absent or
+  empty no package may be graded `hard` this round; when `ui` is, UI
+  packages run on the slot their grade maps to. For each provider of each
   model in each slot, in order, take the three names from the kind
   table and use each once: `command -v <binary>`; the `<integration
   target>` row of `herdr integration status` (the command takes no
@@ -183,10 +186,10 @@ which model, through which CLI, actually did each package.
   declines is a failed check. Drop providers that fail either check
   and models left without one. A required slot with no surviving
   model stops the round here: report it and ask the user; a `hard`
-  slot left with none is reported and treated as absent. Then check
+  or `ui` slot left with none is reported and treated as absent. Then check
   the cross-vendor rule is satisfiable: for the active model of each
-  implementer slot (`smol`, `default`, `slow`, and `hard` when
-  present) there must be at least
+  implementer slot (`smol`, `default`, `slow`, and `hard` and `ui`
+  when present) there must be at least
   one surviving `review` model of a different vendor; if any lacks
   one, stop and ask the user for another review model.
 - This is a long, hands-off run. If your own session is not in an
@@ -440,9 +443,11 @@ only what truly depends on another package's output:
   the same file, note it as a merge risk up front and decide their
   merge order now: a shared *base* commit merges cleanly, but two
   packages editing the same lines will not.
+- Keep UI work in packages of its own, apart from the logic and data
+  behind it, so a UI package (step 5) is UI all the way through.
 - Write down, per package: scope, acceptance criteria, the design or
-  spec references the agent must read, a difficulty grade, and the
-  slot that grade maps to (step 5).
+  spec references the agent must read, a difficulty grade, whether it
+  is a UI package, and the slot these map to (step 5).
 
 Inventory the source repo's existing worktrees: detached or prunable
 entries, a target path occupied by a different branch, checkouts whose
@@ -610,6 +615,14 @@ bug with no reproduction), and only when the user asked for it or the
 plan table named the package as `hard` with its reason and the user
 confirmed. The models there are the most expensive in the catalog,
 so a `hard` package is one the round would otherwise have to drop.
+
+A **UI package** is one whose deliverable is user-facing UI/UX:
+components, layout, styling, interaction, motion, visual
+accessibility. When the `ui` slot is present, a UI package graded
+`smol`, `default` or `slow` runs on `ui`; a `hard` one stays on
+`hard`. The grade is still recorded and still drives the brief: the
+`smol` rules below follow the grade, not the slot.
+
 Write-ahead the implementer (`kind` `agent`, `role`
 `package-implementer`, slot name in `selector`) and append `created`,
 with the pair actually used, after a successful start:
@@ -658,7 +671,7 @@ The brief must carry:
   across worktrees fight over shared caches and locks and make the
   machine unusable, so a parallel round only works if exactly one
   build runs at a time.
-- For a `smol` package only: the work is strictly mechanical. Where a
+- For a package graded `smol` only: the work is strictly mechanical. Where a
   step needs a judgment call the brief did not make, stop, commit what
   is done, and report the question instead of guessing.
 - Commit discipline: Conventional Commits, imperative lowercase subject
@@ -805,8 +818,10 @@ Known traps and how to handle them:
   the same recorded candidate sha afresh and write the same verdict
   path; a scout is told to answer the same question afresh to the
   same report path. Every later start on that slot uses the new pair
-  directly; a failed pair is never retried this round. A slot whose
-  pairs are exhausted ends the turn with the question, after doing
+  directly; a failed pair is never retried this round. An exhausted
+  `ui` slot hands each of its packages to the slot its grade maps to,
+  with a `slot` event and the implementer re-brief above. Any other
+  slot whose pairs are exhausted ends the turn with the question, after doing
   everything on this wake that does not depend on it.
 - **Swallowed first prompt.** Some agents (droid, notably) eat a prompt
   sent during their startup/welcome screen. If an agent is `idle`
