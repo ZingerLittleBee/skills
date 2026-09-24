@@ -405,8 +405,9 @@ is not the chain's last:
 3. Hand off once the ticket is cleared: a prefix check `PASS` bound to
    its head, or, for a red-tolerant member, step 1 alone. Exit the agent
    exactly as herdr-fleet step 6's slot fallback does (the pane stays)
-   and append a `state` event marking it `removed`. Start a fresh `<slug>` on the same pair in the same pane,
-   written ahead under its own resource key
+   and append a `state` event marking it `removed`. Start a fresh
+   `<slug>` on the same pair in the same pane, written ahead under its
+   own resource key
    `package/<slug>/implementer-<n>`, with `<n>` counting the agents the
    package has had. Prompt it with the brief path, the next ticket, the
    next summary path, and the instruction to read
