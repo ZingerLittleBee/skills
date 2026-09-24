@@ -139,10 +139,11 @@ question), so the plan can name each slot's active pair.
 Then present the whole run as a short table and get one confirmation
 before dispatching (skip the pause only if the user already told you to
 run unattended): waves in order, the chains in each with their tickets in
-order, path per wave (with the reason when the fleet is unavailable), per ticket its grade, per serial ticket its model
-and per fleet package its slot and active pair, and the branch. This is
-the last cheap moment to catch a wrong plan, and this single confirmation
-is the authority for every wave and every fleet round of the run.
+order, path per wave (with the reason when the fleet is unavailable), per
+ticket its grade, per serial ticket its model and per fleet package its
+slot and active pair, and the branch. This is the last cheap moment to
+catch a wrong plan, and this single confirmation is the authority for
+every wave and every fleet round of the run.
 
 ## 6. The serial path
 
