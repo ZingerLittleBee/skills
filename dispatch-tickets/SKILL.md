@@ -90,20 +90,29 @@ alone lets them share an integration branch, and all of them block a final
 integrate-and-verify ticket, the only one that promises green. Recognize a
 group from ticket text: the verify ticket (**V**) says it is the
 integrate-and-verify step, and the group's **batches** are the tickets
-blocking V that say they cannot stay green alone. Text is the only
-evidence, so the plan table lists every group and the one confirmation is
+blocking V that say they cannot stay green alone.
+
+The group's **members** are the batches, V, and every ticket on a
+dependency path from a batch to V (a contract ticket between the batches
+and V, say). That closure is what makes collapsing safe: with a ticket
+left outside while it sits between two members, the collapsed node would
+both block it and depend on it. Text is the only evidence, so the plan
+table lists every group with its members and the one confirmation is
 where a misread group gets caught.
 
-Collapse each group into one node before contracting chains. Its blockers
-are the members' blockers outside the group; its dependents are the
-tickets outside the group that any member blocks. The node is a chain in
-its own right, run in sequence as to-tickets asks: the batches in graph
-order (any order when they have none), then V. Three rules set it apart:
+Collapse each group into one node before contracting chains, then check
+the collapsed graph for a cycle once more; one means the group was
+misread, so stop and ask. The node's blockers are the members' blockers
+outside the group; its dependents are the tickets outside the group that
+any member blocks. The node is a chain in its own right, run in sequence
+as to-tickets asks: the members in graph order (any order where the
+graph sets none), V last. Three rules set it apart:
 
-- Batches are **red-tolerant**: they skip every test run and quick check,
-  and their verification checks only that each batch's migration is
-  complete. V gets full verification, and its fixes may touch batch code,
-  since integrating is its job.
+- Every member but V is **red-tolerant**, since the group promises green
+  only at V: it skips every test run and quick check, and its
+  verification checks only that its own work is complete against its
+  criteria. V gets full verification, and its fixes may touch any
+  member's code, since integrating is its job.
 - The group lives on its own **integration branch** and reaches the run's
   branch only once V is green, so no other chain and no later wave ever
   builds on a red tree.
@@ -183,10 +192,12 @@ question), so the plan can name each slot's active pair.
 Then present the whole run as a short table and get one confirmation
 before dispatching (skip the pause only if the user already told you to
 run unattended): waves in order, the chains in each with their tickets in
-order, each integration group with its batches and V, path per wave
-(with the reason when the fleet is unavailable), per ticket its grade,
-per serial ticket its model and per fleet package its slot and active
-pair, the closed tickets skipped, and the branch. This is the last cheap
+order, each integration group with its members and V, any integration
+branch left over from an earlier run (section 6) with the choice to
+resume on it or start fresh, path per wave (with the reason when the
+fleet is unavailable), per ticket its grade, per serial ticket its model
+and per fleet package its slot and active pair, the closed tickets
+skipped, and the branch. This is the last cheap
 moment to catch a wrong plan, and this single confirmation is the
 authority for every wave and every fleet round of the run.
 
@@ -256,27 +267,39 @@ move to the next.
 
 **An integration group on the serial path.** Record the group base
 (`git rev-parse HEAD` on the run's branch), then create and check out its
-integration branch, `<branch>-int-<V>`, from that sha. Run the group's
-tickets in order on it with the loop above, changed in three places:
+integration branch from that sha. Its name is `<branch>-int-<V>`; when a
+branch by that name is left over from an earlier run, the plan table
+(section 5) lists it with its commits, and the new attempt takes the
+first free `<branch>-int-<V>-<k>` and leaves the old branch untouched,
+unless the user chose at confirmation to resume on it. Resuming checks
+out the old branch as is, and a red-tolerant member whose `Refs:` commits
+are already on it gets its verification only, not a new implementer. Run
+the group's tickets in order with the loop above, changed in three
+places:
 
-- A batch's brief replaces the testing sentences with: this ticket is one
-  batch of an integration group whose tree may stay red until #<V>;
-  complete the batch's migration, run no tests, and commit.
-- A batch's verification is step 1 plus a verifier that checks the
-  migration is complete against the batch's criteria; step 2 is skipped,
+- A red-tolerant member's brief replaces the testing sentences with:
+  this ticket belongs to an integration group whose tree may stay red
+  until #<V>; complete this ticket's work, run no tests, and commit.
+- A red-tolerant member's verification is step 1 plus a verifier that
+  checks its work is complete against its criteria; step 2 is skipped,
   and nothing closes yet.
-- V runs with the full brief and full verification, followed by a
-  subagent running the repo's full check suite on the integration
-  branch. A red result gets V's fix-up budget, and those fix-ups may
-  touch batch code.
+- V runs with the full brief. Its verification replaces steps 1 to 3:
+  V may add no commits when the members already integrate cleanly, so
+  the conditions are a clean tree, a verifier grading
+  `git diff <group-base>..HEAD` against every member's criteria and V's,
+  and a subagent running the repo's full check suite on the integration
+  branch's HEAD. A failure gets V's fix-up budget, and those fix-ups may
+  touch any member's code.
 
 Once V passes, check out the run's branch, `git merge --no-ff` the
 integration branch, delete it with `git branch -d`, and close every group
 ticket, each with its own commits:
-`git log --oneline --grep='^Refs: #<N>$' <group-base>..HEAD`. If V stays
-red, the run stops as for any failed ticket: nothing in the group closes,
-the integration branch stays for inspection, and the main checkout goes
-back to the run's branch.
+`git log --oneline --grep='^Refs: #<N>$' <group-base>..HEAD`. V's close
+comment names the verified integration head and the suite result, since
+it may have no commits of its own. If V stays red, the run stops as for
+any failed ticket: nothing in the group closes, the integration branch
+stays for inspection, and the main checkout goes back to the run's
+branch.
 
 ## 7. The fleet path
 
@@ -346,10 +369,11 @@ requires:
   code, the implementer stops and ends its turn with a `QUESTION`
   summary whose question begins `BLOCKED:` and describes the
   contradiction.
-- For an integration group: the batches are red-tolerant (section 3),
-  so a batch's agent completes its migration, runs no tests and commits;
-  V's agent integrates, may touch batch code, and gets the full TDD
-  rules above.
+- For an integration group: every member but V is red-tolerant
+  (section 3), so its agent completes its ticket's work, runs no tests
+  and commits; V's agent integrates, may touch any member's code, may
+  finish without a commit when nothing needs changing, and gets the full
+  TDD rules above.
 - The issues stay open: the dispatcher closes them.
 
 **One fresh implementer per ticket.** A chain is several tickets in one
@@ -367,10 +391,12 @@ is not the chain's last:
    build on this one, so its tests must be green before they start. A
    `FAIL` goes through triage as in step 8, and a genuine one goes back
    to the same live agent for that ticket; that repair costs no
-   correction cycle. A red-tolerant batch skips this step.
-3. On `PASS`, exit the agent exactly as herdr-fleet step 6's slot
-   fallback does (the pane stays) and append a `state` event marking it
-   `removed`. Start a fresh `<slug>` on the same pair in the same pane,
+   correction cycle. A red-tolerant member skips this step: record its
+   check as skipped, never as passed.
+3. Hand off once the ticket is cleared: a prefix check `PASS` bound to
+   its head, or, for a red-tolerant member, step 1 alone. Exit the agent
+   exactly as herdr-fleet step 6's slot fallback does (the pane stays)
+   and append a `state` event marking it `removed`. Start a fresh `<slug>` on the same pair in the same pane,
    written ahead under its own resource key
    `package/<slug>/implementer-<n>`, with `<n>` counting the agents the
    package has had. Prompt it with the brief path, the next ticket, the
