@@ -86,8 +86,10 @@ A chain's **wave** is the length of the longest path of chains leading
 to it: chains with no blockers are wave 1, and a chain whose deepest
 blocking chain sits in wave k is wave k+1. The chains of one wave are
 independent of each other. Waves run strictly in order, and a wave starts
-only once the previous one has **concluded**: every ticket merged on the
-branch, the checks green, the tickets closed.
+only once the previous one has **concluded**: on the serial path, every
+ticket verified (section 6) and closed; on the fleet path, every package
+merged on the branch, the round's suite green, and the tickets closed
+(section 7).
 
 Choose each wave's path:
 
@@ -104,8 +106,11 @@ Choose each wave's path:
 
 An explicit `branch=` argument wins. Otherwise derive `feat/<slug>` from the
 parent issue title (or the common theme of the tickets), reuse it if it
-exists, and create it from the default branch if not. Check it out in the
-main checkout. All tickets land on this one branch, on both paths: serial
+exists, and create it from the default branch if not. The run's branch
+is always a feature branch: if `branch=` names the default branch,
+`develop`, `release/*` or any other shared long-lived branch, stop and
+ask for another name. Check it out in the main checkout. All tickets
+land on this one branch, on both paths: serial
 tickets commit to it directly, and a fleet round takes it as its merge
 target. The user merges it however they like afterwards.
 
@@ -129,8 +134,10 @@ when unsure, grade up. The grade picks the model on either path:
   tickets inherit the session model.
 - Fleet path: a package takes the highest grade among its chain's
   tickets. Mechanical maps to the `smol` slot, ordinary to `default`,
-  foundational to `slow`, and a UI chain goes to `ui` as herdr-fleet
-  step 5 defines. `hard` is only for a chain the user names.
+  foundational to `slow`, and a chain whose tickets are all UI tickets
+  goes to `ui` as herdr-fleet step 5 defines; a chain mixing UI and
+  other work stays on the slot its grade maps to. `hard` is only for a
+  chain the user names.
 
 If any wave takes the fleet path, run herdr-fleet sections 1 and 2 now
 (slot file, preconditions, slot resolution and any integration install
@@ -211,10 +218,11 @@ move to the next.
 
 ## 7. The fleet path
 
-Read the fleet skill path (section 1) in full and run one herdr-fleet round per fleet wave, sections 3
-through 10, as its orchestrator. Everything that section does not
-override below holds as written, including its turn, shell and context
-disciplines and its one-heavy-build rule.
+Read the fleet skill path (section 1) in full and run one herdr-fleet
+round per fleet wave, its sections 3 through 10, as its orchestrator.
+Everything in herdr-fleet that this section does not override holds as
+written, including its turn, shell and context disciplines and its
+one-heavy-build rule.
 
 **Round setup** (herdr-fleet step 3):
 
@@ -254,7 +262,9 @@ requires:
   they read.
 - The rule that each prompt names **one current ticket**: the agent
   completes that ticket only, commits it with the line `Refs: #<N>` in
-  every commit body, and ends its turn with the summary contract.
+  every commit body, and ends its turn with the summary contract. A
+  commit fixing a review finding carries the `Refs:` line of the ticket
+  the finding names instead.
 - TDD discipline written out: failing test first, then implementation,
   in small red-green slices. The implementer still runs no heavy build
   or suite. When the scout report says a single test file runs without
@@ -272,19 +282,37 @@ requires:
 worktree, and one agent carrying all of them would fill its context the
 way this skill exists to prevent. The first prompt names the chain's
 first ticket. When the implementer settles with `DONE` on a ticket that
-is not the chain's last, check the plumbing on that ticket alone:
-`git -C <worktree-path> status --porcelain` empty and new commits since
-the previous ticket's head, each carrying its `Refs:` line. Then exit the
-agent exactly as herdr-fleet step 6's slot fallback does (the pane stays),
-start a fresh `<slug>` on the same pair in the same pane, write-ahead as
-usual, and prompt it with the brief path, the next ticket, the next
-summary path, and the instruction to read `git log <wave-base>..HEAD` in
-its checkout before starting. These hand-offs are planned, so they spend
-none of herdr-fleet's restart budget. Only the `DONE` on the chain's last
-ticket makes the package a candidate for the gates of herdr-fleet steps 7
-and 8; the reviewer grades the whole `base..candidate` diff against every
-ticket's acceptance criteria and names the ticket in each finding, and a
-send-back goes to the implementer that is live at that point.
+is not the chain's last:
+
+1. Check the plumbing on that ticket alone:
+   `git -C <worktree-path> status --porcelain` empty and new commits
+   since the previous ticket's head, each carrying its `Refs:` line.
+2. Queue a quick check on the ticket's head, exactly as herdr-fleet
+   step 8 runs one for a candidate (same check pane, same serial queue,
+   same sha binding). Later tickets build on this one, so its tests
+   must be green before they start. A `FAIL` goes through triage as in
+   step 8, and a genuine one goes back to the same live agent for that
+   ticket; that repair costs no correction cycle.
+3. On `PASS`, exit the agent exactly as herdr-fleet step 6's slot
+   fallback does (the pane stays) and append a `state` event marking it
+   `removed`. Start a fresh `<slug>` on the same pair in the same pane,
+   written ahead under its own resource key
+   `package/<slug>/implementer-<n>`, with `<n>` counting the agents the
+   package has had. Prompt it with the brief path, the next ticket, the
+   next summary path, and the instruction to read
+   `git log <wave-base>..HEAD` in its checkout before starting.
+
+Summary paths keep counting across hand-offs (`<slug>-summary-<n>.md`
+never restarts at 1), so no agent's summary can be mistaken for an
+earlier ticket's. These hand-offs are planned, so they spend none of
+herdr-fleet's restart budget. Only the `DONE` on the chain's last ticket
+makes the package a candidate for the gates of herdr-fleet steps 7 and
+8; the reviewer grades the whole `base..candidate` diff against every
+ticket's acceptance criteria and names the ticket in each finding. A
+send-back goes to the implementer that is live at that point, and each
+fix commit carries the `Refs:` line of the ticket its finding names, not
+the current ticket's. A package's correction budget is one cycle per
+ticket in its chain, never fewer than herdr-fleet's 2.
 
 **Questions during the round.** A `BLOCKED:` question always goes to the
 user, never answered from the brief, since only the user can re-scope a
