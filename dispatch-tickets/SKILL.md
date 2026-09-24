@@ -56,23 +56,59 @@ A wave runs one of two ways:
 ## 2. Gather the tickets
 
 Accept either an explicit ticket list (`#319 #320 …`) or `parent=#N`, in which
-case discover the children: native sub-issues first, otherwise open issues
-whose body references the parent.
+case discover the children: native sub-issues first
+(`gh api --paginate repos/<owner>/<repo>/issues/<N>/sub_issues`), otherwise
+issues whose body references the parent. Then split by state: the run's set
+is the open tickets only. A closed child, or a closed ticket in an explicit
+list, is already done: it is never dispatched again, it counts as a
+satisfied blocker, and the plan table (section 5) lists it as skipped. This
+is what lets a half-finished parent be run again.
 
-Read every ticket in full (`gh issue view <n> --comments`), and the parent
-spec if there is one: you need each ticket's acceptance criteria to verify
-later, and the parent for tie-breaking questions.
+Read every ticket in the set in full (`gh issue view <n> --comments`), and
+the parent spec if there is one: you need each ticket's acceptance criteria
+to verify later, and the parent for tie-breaking questions.
 
-Build the dependency graph from the tracker's native blocking relations
-(`issue_dependencies_summary.blocked_by` on GitHub), falling back to the
-ticket body: a `Blocked by:` line, or a `## Blocked by` section whose list
-items reference the blockers, where "None" means no blockers. Only edges
-between tickets of the set count; a closed blocker outside the set is
-already satisfied. Never trust the order the arguments were written in;
-the graph is the truth. If the graph has a cycle, or a ticket is blocked
-by an open issue outside the given set, stop and ask.
+Build the dependency graph from the tracker's native blocking relations.
+On GitHub, list each ticket's blockers with
+`gh api --paginate repos/<owner>/<repo>/issues/<n>/dependencies/blocked_by`,
+which returns the blocking issues with their repository, number and state;
+`issue_dependencies_summary` on the issue only counts them and names none. A
+failed read is not an empty list: stop and surface it. Only when a ticket
+has no native blockers, read its body: a `Blocked by:` line, or a
+`## Blocked by` section whose list items reference the blockers, where
+"None" means no blockers. Only edges between tickets of the set count; a
+closed blocker is already satisfied. Never trust the order the arguments
+were written in; the graph is the truth. If the graph has a cycle, or a
+ticket is blocked by an open issue outside the set (another repository's
+included), stop and ask.
 
 ## 3. Contract chains, then layer into waves
+
+**Integration groups** come first. to-tickets allows one exception to
+per-ticket green: a wide refactor whose migrate batches cannot stay green
+alone lets them share an integration branch, and all of them block a final
+integrate-and-verify ticket, the only one that promises green. Recognize a
+group from ticket text: the verify ticket (**V**) says it is the
+integrate-and-verify step, and the group's **batches** are the tickets
+blocking V that say they cannot stay green alone. Text is the only
+evidence, so the plan table lists every group and the one confirmation is
+where a misread group gets caught.
+
+Collapse each group into one node before contracting chains. Its blockers
+are the members' blockers outside the group; its dependents are the
+tickets outside the group that any member blocks. The node is a chain in
+its own right, run in sequence as to-tickets asks: the batches in graph
+order (any order when they have none), then V. Three rules set it apart:
+
+- Batches are **red-tolerant**: they skip every test run and quick check,
+  and their verification checks only that each batch's migration is
+  complete. V gets full verification, and its fixes may touch batch code,
+  since integrating is its job.
+- The group lives on its own **integration branch** and reaches the run's
+  branch only once V is green, so no other chain and no later wave ever
+  builds on a red tree.
+- All the group's tickets close together once V is green; if V never gets
+  there, none of them close.
 
 A **chain** is a straight run of tickets with no fork and no join inside
 it. Contract the graph edge by edge: merge A→B into one chain when B is
@@ -110,9 +146,10 @@ exists, and create it from the default branch if not. The run's branch
 is always a feature branch: if `branch=` names the default branch,
 `develop`, `release/*` or any other shared long-lived branch, stop and
 ask for another name. Check it out in the main checkout. All tickets
-land on this one branch, on both paths: serial
-tickets commit to it directly, and a fleet round takes it as its merge
-target. The user merges it however they like afterwards.
+land on this one branch, on both paths: serial tickets commit to it
+directly (an integration group through its integration branch, section
+6), and a fleet round takes it as its merge target. The user merges it
+however they like afterwards.
 
 ## 5. Grade the tickets and present the plan
 
@@ -146,11 +183,12 @@ question), so the plan can name each slot's active pair.
 Then present the whole run as a short table and get one confirmation
 before dispatching (skip the pause only if the user already told you to
 run unattended): waves in order, the chains in each with their tickets in
-order, path per wave (with the reason when the fleet is unavailable), per
-ticket its grade, per serial ticket its model and per fleet package its
-slot and active pair, and the branch. This is the last cheap moment to
-catch a wrong plan, and this single confirmation is the authority for
-every wave and every fleet round of the run.
+order, each integration group with its batches and V, path per wave
+(with the reason when the fleet is unavailable), per ticket its grade,
+per serial ticket its model and per fleet package its slot and active
+pair, the closed tickets skipped, and the branch. This is the last cheap
+moment to catch a wrong plan, and this single confirmation is the
+authority for every wave and every fleet round of the run.
 
 ## 6. The serial path
 
@@ -216,6 +254,30 @@ stopped.
 On success: close the ticket with a comment listing the commit hashes, then
 move to the next.
 
+**An integration group on the serial path.** Record the group base
+(`git rev-parse HEAD` on the run's branch), then create and check out its
+integration branch, `<branch>-int-<V>`, from that sha. Run the group's
+tickets in order on it with the loop above, changed in three places:
+
+- A batch's brief replaces the testing sentences with: this ticket is one
+  batch of an integration group whose tree may stay red until #<V>;
+  complete the batch's migration, run no tests, and commit.
+- A batch's verification is step 1 plus a verifier that checks the
+  migration is complete against the batch's criteria; step 2 is skipped,
+  and nothing closes yet.
+- V runs with the full brief and full verification, followed by a
+  subagent running the repo's full check suite on the integration
+  branch. A red result gets V's fix-up budget, and those fix-ups may
+  touch batch code.
+
+Once V passes, check out the run's branch, `git merge --no-ff` the
+integration branch, delete it with `git branch -d`, and close every group
+ticket, each with its own commits:
+`git log --oneline --grep='^Refs: #<N>$' <group-base>..HEAD`. If V stays
+red, the run stops as for any failed ticket: nothing in the group closes,
+the integration branch stays for inspection, and the main checkout goes
+back to the run's branch.
+
 ## 7. The fleet path
 
 Read the fleet skill path (section 1) in full and run one herdr-fleet
@@ -237,12 +299,20 @@ one-heavy-build rule.
   step's slicing work shrinks to what the chains leave open: scouts still
   report per package the files it will touch, its overlap with the
   wave's other packages, and the convention files and specs to read, and
-  they settle the merge order for overlapping packages. The per-repo
-  commands (dependency resolution, build, quick check, full suite) come
-  from the first fleet round's scout report; carry them forward into
-  later rounds instead of re-surveying. Add one question to that
-  per-repo report: whether a single test file runs without a heavy build
-  (a vitest or pytest file does; a cargo or xcodebuild target does not).
+  they settle the merge order for overlapping packages. Quick checks are
+  per package and come from each round's scouts: the package's final
+  quick check, and for every hand-off point inside its chain a **prefix
+  check** covering only the tickets finished by then (a test a later
+  ticket adds does not exist yet at that point). Only the per-repo
+  commands (dependency resolution, build, full suite) carry forward from
+  the first fleet round's scout report instead of being re-surveyed, and
+  only while no ticket has changed the files that define them. Add one
+  question to that per-repo report: whether a single test file runs
+  without a heavy build (a vitest or pytest file does; a cargo or
+  xcodebuild target does not).
+- An integration group (section 3) is one package like any chain, and
+  its package branch is the group's integration branch: the gates and
+  the merge already keep it off the run's branch until V is green.
 - A scout may raise a package's grade and slot, never lower it; raising
   to `hard` needs the user. A scout report that contradicts a ticket
   (the work is already done, the ground it assumes is gone) is a stale
@@ -276,6 +346,10 @@ requires:
   code, the implementer stops and ends its turn with a `QUESTION`
   summary whose question begins `BLOCKED:` and describes the
   contradiction.
+- For an integration group: the batches are red-tolerant (section 3),
+  so a batch's agent completes its migration, runs no tests and commits;
+  V's agent integrates, may touch batch code, and gets the full TDD
+  rules above.
 - The issues stay open: the dispatcher closes them.
 
 **One fresh implementer per ticket.** A chain is several tickets in one
@@ -287,12 +361,13 @@ is not the chain's last:
 1. Check the plumbing on that ticket alone:
    `git -C <worktree-path> status --porcelain` empty and new commits
    since the previous ticket's head, each carrying its `Refs:` line.
-2. Queue a quick check on the ticket's head, exactly as herdr-fleet
-   step 8 runs one for a candidate (same check pane, same serial queue,
-   same sha binding). Later tickets build on this one, so its tests
-   must be green before they start. A `FAIL` goes through triage as in
-   step 8, and a genuine one goes back to the same live agent for that
-   ticket; that repair costs no correction cycle.
+2. Queue the prefix check for this hand-off point on the ticket's head,
+   exactly as herdr-fleet step 8 runs a quick check for a candidate
+   (same check pane, same serial queue, same sha binding). Later tickets
+   build on this one, so its tests must be green before they start. A
+   `FAIL` goes through triage as in step 8, and a genuine one goes back
+   to the same live agent for that ticket; that repair costs no
+   correction cycle. A red-tolerant batch skips this step.
 3. On `PASS`, exit the agent exactly as herdr-fleet step 6's slot
    fallback does (the pane stays) and append a `state` event marking it
    `removed`. Start a fresh `<slug>` on the same pair in the same pane,
@@ -321,13 +396,17 @@ answer resolves the ticket, that package goes no further: it is dropped
 with its worktree retained (its committed tickets exist nowhere else),
 and the run stops after this round's step 10.
 
+**Merge phase** (herdr-fleet step 9): a conflict-merge or suite-fix
+brief requires every commit to carry a `Refs:` line for each ticket its
+change serves, so the tickets' close comments include the fixes that
+made them work.
+
 **Concluding the wave.** herdr-fleet's final report (step 10) is an
-interim wave report here: it ends no turn. Before step 10 deletes the
-round directory, take each package's `accepted_sha` from its `state`
-event on `package/<slug>/branch`. The wave has concluded when every
-package merged and the suite passed on the branch's HEAD. Then close each
-ticket with a comment listing its own commits,
-`git log --oneline --grep='^Refs: #<N>$' <wave-base>..<accepted_sha>`,
+interim wave report here: it ends no turn. The wave has concluded when
+every package merged and the suite passed on the branch's HEAD; record
+that HEAD as the wave's **green head**. Then close each ticket with a
+comment listing its own commits,
+`git log --oneline --grep='^Refs: #<N>$' <wave-base>..<green-head>`,
 and naming the branch, and start the next wave in the same turn.
 
 Anything short of that stops the run once the round's step 10 is done: a
