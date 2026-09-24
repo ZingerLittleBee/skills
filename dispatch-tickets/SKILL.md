@@ -406,8 +406,10 @@ is not the chain's last:
    its head, or, for a red-tolerant member, step 1 alone. Exit the agent
    exactly as herdr-fleet step 6's slot fallback does (the pane stays)
    and append a `state` event marking it `removed`. Start a fresh
-   `<slug>` on the same pair in the same pane, written ahead under its
-   own resource key
+   `<slug>` in the same pane on the package slot's current active pair:
+   the same pair unless a slot fallback (herdr-fleet step 6) has moved
+   the slot since, and never a pair marked failed. Write it ahead under
+   its own resource key
    `package/<slug>/implementer-<n>`, with `<n>` counting the agents the
    package has had. Prompt it with the brief path, the next ticket, the
    next summary path, and the instruction to read
@@ -420,6 +422,9 @@ herdr-fleet's restart budget. Only the `DONE` on the chain's last ticket
 makes the package a candidate for the gates of herdr-fleet steps 7 and
 8; the reviewer grades the whole `base..candidate` diff against every
 ticket's acceptance criteria and names the ticket in each finding. A
+chain may have run on more than one vendor after a fallback, so the
+reviewer's vendor differs from every implementer vendor the package
+has had. A
 send-back goes to the implementer that is live at that point, and each
 fix commit carries the `Refs:` line of the ticket its finding names, not
 the current ticket's. A package's correction budget is one cycle per
