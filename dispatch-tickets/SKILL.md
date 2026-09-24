@@ -271,10 +271,19 @@ integration branch from that sha. Its name is `<branch>-int-<V>`; when a
 branch by that name is left over from an earlier run, the plan table
 (section 5) lists it with its commits, and the new attempt takes the
 first free `<branch>-int-<V>-<k>` and leaves the old branch untouched,
-unless the user chose at confirmation to resume on it. Resuming checks
-out the old branch as is, and a red-tolerant member whose `Refs:` commits
-are already on it gets its verification only, not a new implementer. Run
-the group's tickets in order with the loop above, changed in three
+unless the user chose at confirmation to resume on it.
+
+Resuming checks out the old branch as is and takes
+`git merge-base <branch> <old-integration-branch>` as the group base
+instead of the run's HEAD. A red-tolerant member whose `Refs:` commits
+are already on it (`git log --grep='^Refs: #<N>$' <group-base>..HEAD`)
+starts at verification, not at an implementer. That verification needs
+no new commit: a clean tree, and a verifier grading exactly those
+commits against the member's criteria. Only a gap the verifier names
+dispatches an implementer, briefed that those commits are its own
+earlier work and that it completes what is missing.
+
+Run the group's tickets in order with the loop above, changed in three
 places:
 
 - A red-tolerant member's brief replaces the testing sentences with:
