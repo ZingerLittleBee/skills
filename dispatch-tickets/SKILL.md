@@ -39,11 +39,19 @@ A wave runs one of two ways:
 - If the repo declares its tracker conventions (e.g. `docs/agents/issue-tracker.md`),
   follow those. Default: GitHub issues via the `gh` CLI.
 - **Fleet availability**, checked once: the fleet path is available when
-  `herdr status server` reports `status: running` and
-  `../herdr-fleet/SKILL.md`, relative to this skill's base directory,
-  exists. The fleet skill is user-invoked, so you reach it by reading
-  that file, never by invoking it as a skill. An explicit `mode=serial`
-  argument makes the fleet unavailable for the run.
+  `herdr status server` reports `status: running` and the herdr-fleet
+  skill file is found. The fleet skill is user-invoked, so you reach it
+  by reading that file, never by invoking it as a skill. Look for it in
+  this order and record the first path that exists as the **fleet
+  skill path**: `../herdr-fleet/SKILL.md` relative to this skill's base
+  directory (when the host names one), then
+  `<repo>/.claude/skills/herdr-fleet/SKILL.md`,
+  `~/.agents/skills/herdr-fleet/SKILL.md` and
+  `~/.claude/skills/herdr-fleet/SKILL.md`. When herdr is running but no
+  path exists, tell the user the fleet is unavailable for that reason
+  and the whole run goes serial; the plan table (section 5) repeats it.
+  An explicit `mode=serial` argument makes the fleet unavailable for the
+  run.
 
 ## 2. Gather the tickets
 
@@ -131,7 +139,7 @@ question), so the plan can name each slot's active pair.
 Then present the whole run as a short table and get one confirmation
 before dispatching (skip the pause only if the user already told you to
 run unattended): waves in order, the chains in each with their tickets in
-order, path per wave, per ticket its grade, per serial ticket its model
+order, path per wave (with the reason when the fleet is unavailable), per ticket its grade, per serial ticket its model
 and per fleet package its slot and active pair, and the branch. This is
 the last cheap moment to catch a wrong plan, and this single confirmation
 is the authority for every wave and every fleet round of the run.
@@ -202,8 +210,7 @@ move to the next.
 
 ## 7. The fleet path
 
-Read `../herdr-fleet/SKILL.md` in full, relative to this skill's base
-directory, and run one herdr-fleet round per fleet wave, sections 3
+Read the fleet skill path (section 1) in full and run one herdr-fleet round per fleet wave, sections 3
 through 10, as its orchestrator. Everything that section does not
 override below holds as written, including its turn, shell and context
 disciplines and its one-heavy-build rule.
