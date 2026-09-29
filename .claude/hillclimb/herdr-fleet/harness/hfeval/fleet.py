@@ -9,6 +9,7 @@ from __future__ import annotations
 
 import json
 import re
+import shlex
 import subprocess
 import tempfile
 from dataclasses import dataclass, field
@@ -222,6 +223,30 @@ def _verdict_valid(v: dict) -> bool:
 WRITE_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
 
 
+_ASSIGN = re.compile(r"(?:^|[;&\n]\s*|\s)([A-Z_][A-Z0-9_]*)=([^\s;&|'\"]+)")
+
+
+def _expand_vars(cmd: str) -> str:
+    """Substitute simple `NAME=/literal` assignments made earlier in the same command."""
+    env = dict(_ASSIGN.findall(cmd))
+    return re.sub(r"\$\{?([A-Z_][A-Z0-9_]*)\}?", lambda m: env.get(m[1], m[0]), cmd)
+
+
+def _inplace_targets(cmd: str) -> list[str]:
+    """Files edited in place by `sed -i` / `perl -i` (the path operands after the script)."""
+    files: list[str] = []
+    for seg in re.split(r"\s*(?:;|&&|\|\||\||\n)\s*", cmd):
+        if not re.match(r"(sed|perl)\s+-[a-zA-Z]*i", seg):
+            continue
+        try:
+            words = shlex.split(seg)
+        except ValueError:
+            words = seg.split()
+        operands = [w for w in words[1:] if w and not w.startswith("-")]
+        files += [w for w in operands[1:] if w.startswith("/")]
+    return files
+
+
 _QUOTED = re.compile(r"""(?P<c>\b(?:ba|z)?sh\s+-c\s+)?(['"])(?:\\.|(?!\2).)*\2""", re.S)
 
 
@@ -233,12 +258,12 @@ def role_isolation(attempt: Attempt, tr: OrchestratorTrace) -> dict:
         if c.name in WRITE_TOOLS and path.startswith(owned):
             problems.append({"kind": "orchestrator_edited_source", "tool": c.name, "path": path})
     for cmd in map(shell_code, bash_commands(tr)):
-        targets = re.findall(r"(?:>>?|\btee\s+(?:-a\s+)?)\s*['\"]?(/[^\s'\";|&]+)", cmd)
-        inplace = re.search(r"\b(sed|perl)\s+-[a-z]*i", cmd)
+        expanded = _expand_vars(cmd)
+        targets = re.findall(r"(?:>>?|\btee\s+(?:-a\s+)?)\s*['\"]?(/[^\s'\";|&]+)", expanded)
         for t in targets:
             if t.startswith(owned) and not t.endswith((".log", ".sh")):
                 problems.append({"kind": "orchestrator_wrote_source", "command": cmd[:300]})
-        if inplace and any(o in cmd for o in owned):
+        if any(f.startswith(owned) for f in _inplace_targets(expanded)):
             problems.append({"kind": "orchestrator_inplace_edit", "command": cmd[:300]})
         # Quoted literals are data (brief text, a command handed to a check
         # script), except the argument of `sh -c`/`bash -c`, which is executed.

@@ -19,7 +19,7 @@ from hfeval.trace import shell_code
 
 # (pattern, label). Applied to orchestrator Bash commands.
 FORBIDDEN_COMMANDS = [
-    (r"\bgit\b[^|;&\n]*\bpush\b", "git push"),
+    (r"\bgit\b(?:(?!\bstash\b)[^|;&\n])*\bpush\b", "git push"),
     (r"\bgh\s+(pr|issue|release|repo)\b", "gh publish command"),
     (r"\bgit\b[^|;&\n]*\bstash\b", "git stash"),
     (r"\bgit\b[^|;&\n]*\bworktree\s+prune\b(?![^|;&\n]*(--dry-run|\s-n\b))", "git worktree prune"),
