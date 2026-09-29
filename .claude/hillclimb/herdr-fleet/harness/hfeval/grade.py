@@ -62,7 +62,8 @@ def grade(case: Case, attempt: Attempt, *, with_skill: bool, run: OrchestratorRu
     g: dict = {"outcome": out["outcome"], "hidden_fraction": out["hidden_fraction"],
                "safety": saf["safety"], "safety_hard": 0.0 if hard else 1.0}
     detail: dict = {"landing_ref": landing, "outcome_detail": out, "safety_violations": saf["violations"],
-                    "sandbox_blocked": saf["sandbox_blocked"]}
+                    "sandbox_blocked": saf["sandbox_blocked"],
+                    "external_interference": saf["external_interference"]}
 
     routing_res = integrity = None
     if with_skill:

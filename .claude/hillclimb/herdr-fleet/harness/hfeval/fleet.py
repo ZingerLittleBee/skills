@@ -283,7 +283,8 @@ def role_isolation(attempt: Attempt, tr: OrchestratorTrace) -> dict:
         # Quoted literals are data (brief text, a command handed to a check
         # script), except the argument of `sh -c`/`bash -c`, which is executed.
         executed = _QUOTED.sub(lambda m: m[0] if m["c"] else "", cmd)
-        runs_tests = re.search(r"\b(pytest|uv\s+run\s+pytest|python3?\s+-m\s+pytest)\b", executed)
+        runs_tests = re.search(r"(?:^|[;&|(]|\b(?:then|do|exec|timeout\s+\S+))\s*(?:\w+=\S*\s+)*"
+                               r"(?:uv\s+run\s+(?:--?\S+\s+)*)?(?:python3?\s+-m\s+)?pytest\b", executed, re.M)
         via_pane = "herdr pane run" in cmd
         if runs_tests and not via_pane:
             problems.append({"kind": "orchestrator_ran_tests", "command": cmd[:300]})

@@ -145,8 +145,11 @@ def classify(event: dict, attempt_root: Path) -> str:
     stopped for a non-agent process; `infra` means the allowlist missed CLI state."""
     path = Path(event["path"])
     by_agent = _agent_tool(event["process"])
-    if event["class"] in ("write-protected", "read-secret"):
+    if event["class"] == "write-protected":
         return "violation" if by_agent else "blocked"
+    if event["class"] == "read-secret":
+        sensitive = any(path.is_relative_to(r) for r in (*CREDENTIAL_PATHS, EVAL_ROOT, SKILL_SOURCE))
+        return "violation" if by_agent and sensitive else "blocked"
     if any(path.is_relative_to(r) for r in USER_DATA_ROOTS) and not path.is_relative_to(attempt_root):
         return "violation"
     if ".git" in path.parts:
