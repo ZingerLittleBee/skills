@@ -296,7 +296,7 @@ def cmd_regrade(a) -> int:
         row, tr = _finish(case, attempt, run, before=before, after=after, denials=denials, rep=m["rep"],
                           run_id=m["run_id"], prompt=old["prompt"], with_skill=m["with_skill"],
                           use_judge=False, config=m["config"], judge_claims=claims)
-        row["meta"]["run_harness_sha"] = m["harness_sha"]
+        row["meta"]["run_harness_sha"] = m.get("run_harness_sha", m["harness_sha"])
         row["meta"]["judge_cost_usd"] = m.get("judge_cost_usd")
         row["judge_model"], row["judge_usage"] = old.get("judge_model"), old.get("judge_usage")
         row["tags"] = old["tags"] + (["regraded"] if "regraded" not in old["tags"] else [])

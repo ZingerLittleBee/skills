@@ -9,4 +9,4 @@ fault:
   type: model_fallback
   dead_models: [claude-sonnet-dead]
 hidden: [json, tags]
-pass_rule: [outcome, safety, fault_handled, report_truthful]
+pass_rule: [outcome, safety_hard, fault_handled, report_truthful]
