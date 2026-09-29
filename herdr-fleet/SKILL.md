@@ -162,6 +162,8 @@ which model, through which CLI, actually did each package.
   creates one of its own in step 3 and closes it in step 10.
 - The main repo's working tree must be clean; surface a dirty tree
   instead of working around it.
+- `python3 --version` reports 3.9 or later: the ledger script (step 3)
+  needs it. Without one, say so and stop.
 - Resolve the slots (step 1): `smol`, `default`, `slow` and `review`
   are required; `hard` and `ui` are optional. When `hard` is absent or
   empty no package may be graded `hard` this round; when `ui` is, UI
@@ -309,21 +311,55 @@ home, so it is the one resource that cannot be preceded by its own
 `intent`. Every later reference to the round directory uses this
 recorded path, never a second `$TMPDIR` resolve. Mint a `round_id`
 unique to this invocation; ownership is proved by `round_id`, not by
-round-slug or label. `seq` increases monotonically so an auditor can
-detect a truncated or misordered append.
+round-slug or label.
 
 A mutable row cannot be write-ahead, so the manifest is an event log:
-write an `intent` event and flush it before each create command;
-append a `created` event immediately after a successful response,
-before doing anything else; append a `state` event on every
-disposition; append a `slot` event on every slot resolution and
-fallback. Never rewrite an earlier line. Every resource but the round
-directory follows that write-ahead, including every agent, pane,
-tab, branch, container root pane, worktree and the workspace the
-round creates for itself; a package workspace is made by
-`herdr worktree create` and is recorded on its worktree's `created`
-event (step 4), not as a resource of its own. An unrecorded resource
-cannot be reclaimed. Record envelope:
+an `intent` event before each create command; a `created` event
+immediately after a successful response, before doing anything else;
+a `state` event on every disposition; a `slot` event on every slot
+resolution and fallback. Every resource but the round directory
+follows that write-ahead, including every agent, pane, tab, branch,
+container root pane, worktree and the workspace the round creates for
+itself; a package workspace is made by `herdr worktree create` and is
+recorded on its worktree's `created` event (step 4), not as a
+resource of its own. An unrecorded resource cannot be reclaimed.
+
+**Every event goes through the ledger script**, `scripts/ledger.py`
+beside this SKILL.md: `<skill-dir>` below is the directory this file
+was loaded from, written out literally like every other path. The
+script is the manifest's only writer. It locks the file, assigns the
+monotonic `seq` an auditor uses to detect a truncated or misordered
+append, fills the round fields from the first record, checks every
+enum, and refuses what the write-ahead rule forbids (a `created`
+with no pending `intent`, a replacement's `intent` while the old one
+is still live), naming the fix; a refusal appends nothing. `created`
+and `state` events inherit `kind`, `role`, `parent_key`,
+`cleanup_policy` and `selector` from the resource's earlier events,
+and a `state` event its `observed` too, so they carry only what
+changed. The round directory's event opens the manifest:
+
+```bash
+python3 <skill-dir>/scripts/ledger.py <recorded-round-dir>/manifest.jsonl created round/dir --kind dir --role round-dir --policy delete-on-success --selector path=<recorded-round-dir> --observed path=<recorded-round-dir> --round-id <round_id> --round-slug <round-slug>
+```
+
+Every later event has the same form, with `--round-id` and
+`--round-slug` dropped:
+
+```bash
+python3 <skill-dir>/scripts/ledger.py <recorded-round-dir>/manifest.jsonl intent package/<slug>/worktree --kind worktree --role package-container --policy remove-when-merged --selector label=<slug>
+python3 <skill-dir>/scripts/ledger.py <recorded-round-dir>/manifest.jsonl created package/<slug>/worktree --observed path=<worktree-path> --observed workspace_id=<workspace-id>
+python3 <skill-dir>/scripts/ledger.py <recorded-round-dir>/manifest.jsonl state package/<slug>/branch --status live --observed accepted_sha=<sha>
+```
+
+`--selector` and `--observed` take `key=value` and repeat, and a
+dotted key nests (`--observed replaced.model=<model>`); `--parent`
+sets `parent_key` and `--detail` the reason. Each write-ahead
+instruction in this skill names the `kind`, `role` and
+`cleanup_policy` that become those flags. A replacement started in
+the same pane (a restart or a slot fallback) keeps the resource's
+key: a `state` event with `removed` or `failed` closes the old agent,
+then a fresh `intent` and `created` record the new one. Each line the
+script writes is one record:
 
 ```json
 {
@@ -354,11 +390,17 @@ used to find the resource again if a create response is lost.
 `observed` is empty on `intent` and carries the real ids on
 `created`. Agent `created` events also carry `slot`, `model`,
 `provider_kind` and `args` in `observed`, so the report can name the
-model behind every package. A `slot` event has `resource_key`
-`slot/<name>`, `kind` `slot`, `cleanup_policy` `report-only`,
-`status` `live`, and `observed` carrying `model`, `provider_kind`,
-`args` and, on a fallback, the pair it replaced and why. Append one
-now per slot for the active pairs resolved in step 2.
+model behind every package. A `slot` event's key is `slot/<name>`
+(the script fills its `kind`, `role` and `cleanup_policy`), and its
+`observed` carries `model`, `provider_kind` and `args` and, on a
+fallback, the pair it replaced and why under `replaced.`. The `args`
+value is one quoted word here, since it is data, not a command line:
+
+```bash
+python3 <skill-dir>/scripts/ledger.py <recorded-round-dir>/manifest.jsonl slot slot/<name> --observed model=<model> --observed provider_kind=<kind> --observed 'args=<provider-args>'
+```
+
+Append one now per slot for the active pairs resolved in step 2.
 
 Now fix the round's **base** and **merge target** from the main repo's
 current branch:
@@ -1525,8 +1567,9 @@ worktree holding dirty or unmerged work stays in place; a finished
 agent session closes before its package or merge task is considered
 done; a container root pane is never closed explicitly (step 9) and
 a workspace the round did not create is never closed at all (step
-10); every resource but the round directory is write-ahead (step 3)
-and only manifest-confirmed ones are reclaimed; the round directory
+10); every resource but the round directory is write-ahead (step 3),
+every manifest event is appended by the ledger script, and only
+manifest-confirmed resources are reclaimed; the round directory
 is archived to a `round_id`-unique path in the state directory and
 checksum-verified before it is deleted (step 10); the orchestrator
 ends a turn only at the points section 2 names, and never on a plan
