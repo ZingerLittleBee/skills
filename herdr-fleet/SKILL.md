@@ -57,8 +57,11 @@ briefs and the manifest refer to models by name:
 | `review` | reviewers by default; a reviewer never shares a vendor with the implementer it grades |
 
 The catalog and the slot table are the user's, not the skill's: read
-both from `${XDG_CONFIG_HOME:-$HOME/.config}/herdr-fleet/slots.yml`.
-Its shape, with example values:
+both from `${XDG_CONFIG_HOME:-$HOME/.config}/herdr-fleet/slots.yml`,
+the path as the shell resolves it (`printf '%s\n'
+"${XDG_CONFIG_HOME:-$HOME/.config}/herdr-fleet/slots.yml"`), since
+`XDG_CONFIG_HOME` may point away from `~/.config`. Its shape, with
+example values:
 
 ```yaml
 models:
@@ -436,7 +439,11 @@ current branch:
 **Understand the request** the way you would in any session: read
 the user's description, the repo's convention files, the file tree,
 and `git -C <main-repo-path> log`, and open the specific files a
-slicing decision hinges on. Do not walk the codebase yourself. Every question that needs
+slicing decision hinges on. Do not walk the codebase yourself, and
+run nothing from it: the suite, a build and the CLI under change run
+only as check scripts (step 4), so the scout report is where the
+round learns the commands and what the repo documents about their
+state. Every question that needs
 broad reading goes to a **scout**: the host's own read-only subagent
 facility if it has one (an Explore-style agent), otherwise a herdr
 agent on the `smol` slot's active pair, in a tab of its own in the
