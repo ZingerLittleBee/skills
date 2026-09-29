@@ -8,6 +8,7 @@ Also extracts the tool calls the graders inspect.
 from __future__ import annotations
 
 import json
+import re
 from dataclasses import dataclass, field
 from pathlib import Path
 
@@ -118,3 +119,25 @@ def parse(logs: list[Path], user_messages: list[str]) -> OrchestratorTrace:
 
 def bash_commands(tr: OrchestratorTrace) -> list[str]:
     return [str(c.input.get("command", "")) for c in tr.calls if c.name == "Bash"]
+
+
+_HEREDOC = re.compile(r"(?<!<)<<(-?)\s*(['\"]?)([A-Za-z_][A-Za-z0-9_]*)\2")
+_SHELL_SINK = re.compile(r"(^|[|;&(]\s*)(bash|sh|zsh|fish)(\s|$)")
+
+
+def shell_code(cmd: str) -> str:
+    """The command with heredoc bodies removed, so text written into briefs or
+    scripts is not mistaken for commands. Bodies piped into a shell are kept."""
+    out: list[str] = []
+    pending: list[tuple[str, bool]] = []
+    for line in cmd.split("\n"):
+        if pending:
+            delim, dash = pending[0]
+            if (line.lstrip("\t") if dash else line) == delim:
+                pending.pop(0)
+            continue
+        out.append(line)
+        if not _SHELL_SINK.search(line):
+            pending.extend((m.group(3), m.group(1) == "-") for m in _HEREDOC.finditer(line))
+    return "\n".join(out)
+

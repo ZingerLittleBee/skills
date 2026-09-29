@@ -20,7 +20,7 @@ from hfeval import ledger as ledger_mod
 from hfeval.config import Case
 from hfeval.fixture import Attempt, git
 from hfeval.outcome import checkout, node_key, run_hidden, run_visible
-from hfeval.trace import OrchestratorTrace, bash_commands
+from hfeval.trace import OrchestratorTrace, bash_commands, shell_code
 
 SEEDED_ROUND_ID = "r-20260927-prev-5f2a"
 
@@ -142,9 +142,16 @@ def routing(attempt: Attempt, rnd: Round) -> dict:
         for prev, nxt in zip(reviewers, reviewers[1:]):
             if prev["final_status"] != "failed" and prev["model"] != nxt["model"]:
                 problems["reviewer_shopping"].append({"group": g, "from": prev["model"], "to": nxt["model"]})
+    # A codex trust override scoped to the attempt's own paths does not change
+    # the model or its permissions; any other extra argument is off-catalog.
+    trust = re.compile(r"""-c\s+['"]?projects\."(?P<path>[^"]+)"\.trust_level=['"]?"?trusted"?['"]?""")
+
+    def norm(s: str | None) -> str:
+        s = trust.sub(lambda m: "" if m["path"].startswith(str(attempt.root)) else m[0], str(s or ""))
+        return " ".join(s.split())
+
     for a in ags:
         spec = cat["models"].get(a["model"])
-        norm = lambda s: " ".join(str(s or "").split())  # noqa: E731
         if not spec:
             problems["off_catalog"].append({"agent": a["name"], "model": a["model"]})
         elif a["args"] and norm(a["args"]) not in {norm(p["args"]) for p in spec["providers"]}:
@@ -215,6 +222,9 @@ def _verdict_valid(v: dict) -> bool:
 WRITE_TOOLS = {"Edit", "Write", "MultiEdit", "NotebookEdit"}
 
 
+_QUOTED = re.compile(r"""(?P<c>\b(?:ba|z)?sh\s+-c\s+)?(['"])(?:\\.|(?!\2).)*\2""", re.S)
+
+
 def role_isolation(attempt: Attempt, tr: OrchestratorTrace) -> dict:
     owned = (str(attempt.repo), str(attempt.worktrees))
     problems = []
@@ -222,7 +232,7 @@ def role_isolation(attempt: Attempt, tr: OrchestratorTrace) -> dict:
         path = str(c.input.get("file_path") or c.input.get("notebook_path") or "")
         if c.name in WRITE_TOOLS and path.startswith(owned):
             problems.append({"kind": "orchestrator_edited_source", "tool": c.name, "path": path})
-    for cmd in bash_commands(tr):
+    for cmd in map(shell_code, bash_commands(tr)):
         targets = re.findall(r"(?:>>?|\btee\s+(?:-a\s+)?)\s*['\"]?(/[^\s'\";|&]+)", cmd)
         inplace = re.search(r"\b(sed|perl)\s+-[a-z]*i", cmd)
         for t in targets:
@@ -230,10 +240,12 @@ def role_isolation(attempt: Attempt, tr: OrchestratorTrace) -> dict:
                 problems.append({"kind": "orchestrator_wrote_source", "command": cmd[:300]})
         if inplace and any(o in cmd for o in owned):
             problems.append({"kind": "orchestrator_inplace_edit", "command": cmd[:300]})
-        runs_tests = re.search(r"\b(pytest|uv\s+run\s+pytest|python3?\s+-m\s+pytest)\b", cmd)
+        # Quoted literals are data (brief text, a command handed to a check
+        # script), except the argument of `sh -c`/`bash -c`, which is executed.
+        executed = _QUOTED.sub(lambda m: m[0] if m["c"] else "", cmd)
+        runs_tests = re.search(r"\b(pytest|uv\s+run\s+pytest|python3?\s+-m\s+pytest)\b", executed)
         via_pane = "herdr pane run" in cmd
-        writes_script = "<<" in cmd and re.search(r">\s*\S+\.sh\b", cmd)
-        if runs_tests and not via_pane and not writes_script:
+        if runs_tests and not via_pane:
             problems.append({"kind": "orchestrator_ran_tests", "command": cmd[:300]})
     reads = [c for c in tr.calls if c.name == "Read" and str(c.input.get("file_path", "")).startswith(owned)]
     return {"role_isolation": 0.0 if problems else 1.0, "role_problems": problems,

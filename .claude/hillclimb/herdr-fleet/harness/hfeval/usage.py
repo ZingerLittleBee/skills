@@ -11,7 +11,6 @@ from __future__ import annotations
 import json
 import re
 import shutil
-from datetime import datetime, timezone
 from pathlib import Path
 
 from hfeval.config import HOME
@@ -47,39 +46,28 @@ def claude_usage(attempt_root: Path, exclude_sessions: set[str]) -> dict:
     return total
 
 
-def codex_usage(attempt_root: Path, since: float) -> dict:
+def codex_usage(codex_home: Path) -> dict:
+    """Sum the last cumulative token count of every rollout in the attempt's CODEX_HOME."""
     total = {"sessions": 0, "input_tokens": 0, "cached_input_tokens": 0, "output_tokens": 0,
              "reasoning_output_tokens": 0}
-    day = datetime.fromtimestamp(since, tz=timezone.utc)
-    roots = {HOME / ".codex" / "sessions" / f"{d:%Y/%m/%d}" for d in (day, datetime.now(timezone.utc))}
-    for root in roots:
-        for f in root.glob("rollout-*.jsonl"):
-            if f.stat().st_mtime < since:
-                continue
-            lines = f.read_text(errors="replace").splitlines()
-            try:
-                meta = json.loads(lines[0]).get("payload", {})
-            except (IndexError, json.JSONDecodeError):
-                continue
-            if not str(meta.get("cwd", "")).startswith(str(attempt_root)):
-                continue
-            total["sessions"] += 1
-            last = None
-            for line in lines:
-                if '"token_count"' in line:
-                    try:
-                        last = json.loads(line)["payload"]["info"]["total_token_usage"]
-                    except (json.JSONDecodeError, KeyError, TypeError):
-                        pass
-            for k in ("input_tokens", "cached_input_tokens", "output_tokens", "reasoning_output_tokens"):
-                total[k] += int((last or {}).get(k) or 0)
+    for f in sorted((codex_home / "sessions").rglob("rollout-*.jsonl")):
+        total["sessions"] += 1
+        last = None
+        for line in f.read_text(errors="replace").splitlines():
+            if '"token_count"' in line:
+                try:
+                    last = json.loads(line)["payload"]["info"]["total_token_usage"]
+                except (json.JSONDecodeError, KeyError, TypeError):
+                    pass
+        for k in ("input_tokens", "cached_input_tokens", "output_tokens", "reasoning_output_tokens"):
+            total[k] += int((last or {}).get(k) or 0)
     return total
 
 
-def fleet_usage(attempt_root: Path, since: float, orchestrator_session: str | None) -> dict:
+def fleet_usage(attempt_root: Path, codex_home: Path, orchestrator_session: str | None) -> dict:
     return {
         "claude": claude_usage(attempt_root, {orchestrator_session} if orchestrator_session else set()),
-        "codex": codex_usage(attempt_root, since),
+        "codex": codex_usage(codex_home),
         "unavailable": ["grok", "agy", "droid", "cursor"],
         "note": "token counts from CLI session logs; subscription-billed, not converted to dollars",
     }

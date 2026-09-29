@@ -98,7 +98,8 @@ def run_attempt(case_id: str, rep: int, *, variant_dir: Path, with_skill: bool, 
                        requested_model=model, skill_source=str(skill_source) if with_skill else None)
     since = datetime.now().strftime("%Y-%m-%d %H:%M:%S")
     session.start(cwd=attempt.repo, profile=attempt.logs / "sandbox.sb",
-                  env={"TMPDIR": f"{attempt.tmp}/", "HERDR_CONFIG_PATH": str(attempt.herdr_config)},
+                  env={"TMPDIR": f"{attempt.tmp}/", "HERDR_CONFIG_PATH": str(attempt.herdr_config),
+                       "CODEX_HOME": str(attempt.codex_home)},
                   log=attempt.logs / "herdr-server.log")
     try:
         if case.seeds:
@@ -119,12 +120,26 @@ def run_attempt(case_id: str, rep: int, *, variant_dir: Path, with_skill: bool, 
         _kill_strays(attempt.root)
     denials = sandbox.collect_denials(aid, since)
     (attempt.logs / "denials.json").write_text(json.dumps(denials, indent=1))
+    config = {"wall_clock_s": wall_clock_s, "budget_usd": budget_usd, "requested_model": model,
+              "catalog": case.catalog, "session": session.name}
+    row, tr = _finish(case, attempt, run, before=before, after=after, denials=denials, rep=rep, run_id=run_id,
+                      prompt=prompt, with_skill=with_skill, use_judge=use_judge, config=config, fake=fake)
+    _persist(variant_dir, case.id, rep, row, tr, attempt)
+    if not keep:
+        shutil.rmtree(attempt.root, ignore_errors=True)
+    return row
+
+
+def _finish(case, attempt: fixture.Attempt, run: orchestrate.OrchestratorRun, *, before: dict, after: dict,
+            denials: list[dict], rep: int, run_id: str, prompt: str, with_skill: bool, use_judge: bool,
+            config: dict, fake: Path | None = None, judge_claims: dict | None = None):
+    """Grade a finished attempt and build its results row."""
     logs = sorted(attempt.logs.glob("orchestrator-*.jsonl"), key=lambda p: int(p.stem.split("-")[1]))
     user_msgs = [t["user_message"] for t in run.turns]
     tr = trace.parse(logs, user_msgs)
-    fleet_use = usage.fleet_usage(attempt.root, run.started, run.session_id)
+    fleet_use = usage.fleet_usage(attempt.root, attempt.codex_home, run.session_id)
     res = grade.grade(case, attempt, with_skill=with_skill, run=run, tr=tr, before=before, after=after,
-                      denials=denials, use_judge=use_judge, fleet_use=fleet_use)
+                      denials=denials, use_judge=use_judge, fleet_use=fleet_use, judge_claims=judge_claims)
 
     evidence = "e2e" if case.fault_type == "none" else "e2e-injected"
     if fake:
@@ -142,18 +157,15 @@ def run_attempt(case_id: str, rep: int, *, variant_dir: Path, with_skill: bool, 
         "model": tr.model, "usage": tr.usage, "grade": res["grade"],
         "explanation": _explanations(res), **res["perf"],
         "judge_model": res["judge"].get("judge_model"), "judge_usage": res["judge"].get("judge_usage"),
-        "meta": {"rep": rep, "attempt": str(attempt.root), "attempt_id": aid, "run_id": run_id,
+        "meta": {"rep": rep, "attempt": str(attempt.root), "attempt_id": attempt.meta().get("attempt_id"),
+                 "run_id": run_id,
                  "evidence": evidence, "with_skill": with_skill, "orchestrator_models": tr.models,
                  "skills_loaded": tr.skills_loaded, "user_turns": run.user_turns, "turns": run.turns,
                  "timed_out": run.timed_out, "fleet_usage": fleet_use, "harness_sha": harness_sha(),
-                 "config": {"wall_clock_s": wall_clock_s, "budget_usd": budget_usd, "requested_model": model,
-                            "catalog": case.catalog, "session": session.name},
+                 "config": config,
                  "detail": res["detail"], "judge_cost_usd": res["judge"].get("judge_cost_usd")},
     }
-    _persist(variant_dir, case.id, rep, row, tr, attempt)
-    if not keep:
-        shutil.rmtree(attempt.root, ignore_errors=True)
-    return row
+    return row, tr
 
 
 def _explanations(res: dict) -> dict:
@@ -260,6 +272,39 @@ def cmd_run(a) -> int:
     return 0
 
 
+def cmd_regrade(a) -> int:
+    """Re-grade saved attempts with the current graders. Reuses the stored judge
+    claims (no paid calls). The orchestration itself ran under the harness
+    recorded in each row's meta.harness_sha; the new row notes both."""
+    src = Path(a.src)
+    dest = Path(a.dest)
+    dest.mkdir(parents=True, exist_ok=True)
+    for line in src.read_text().splitlines():
+        if not line.strip():
+            continue
+        old = json.loads(line)
+        m = old["meta"]
+        attempt = fixture.Attempt(Path(m["attempt"]))
+        case = load_case(old["prompt_id"])
+        before = json.loads((attempt.logs / "snapshot-before.json").read_text())
+        after = json.loads((attempt.logs / "snapshot-after.json").read_text())
+        denials = json.loads((attempt.logs / "denials.json").read_text())
+        run = orchestrate.OrchestratorRun(turns=m["turns"], user_turns=m["user_turns"], timed_out=m["timed_out"],
+                                          budget_exhausted="budget_exhausted" in old["tags"],
+                                          session_id=_session_id(attempt), started=0.0, ended=old["latency_s"])
+        claims = (m["detail"].get("report") or {}).get("claims")
+        row, tr = _finish(case, attempt, run, before=before, after=after, denials=denials, rep=m["rep"],
+                          run_id=m["run_id"], prompt=old["prompt"], with_skill=m["with_skill"],
+                          use_judge=False, config=m["config"], judge_claims=claims)
+        row["meta"]["run_harness_sha"] = m["harness_sha"]
+        row["meta"]["judge_cost_usd"] = m.get("judge_cost_usd")
+        row["judge_model"], row["judge_usage"] = old.get("judge_model"), old.get("judge_usage")
+        row["tags"] = old["tags"] + (["regraded"] if "regraded" not in old["tags"] else [])
+        _persist(dest, case.id, m["rep"], row, tr, attempt)
+        print(json.dumps({"case": case.id, "rep": m["rep"], "old": old["grade"], "new": row["grade"]}))
+    return 0
+
+
 def cmd_selftest(a) -> int:
     script = HARNESS / "selftests" / "fakes" / f"{a.kind}.sh"
     variant_dir = RUNS_TMP / "selftest-flow" / a.kind
@@ -291,12 +336,15 @@ def main(argv: list[str] | None = None) -> int:
     s.add_argument("--model")
     s.add_argument("--no-judge", action="store_true")
     s.add_argument("--run-id")
+    s = sub.add_parser("regrade")
+    s.add_argument("--src", required=True, help="results.jsonl to re-grade")
+    s.add_argument("--dest", required=True, help="directory for the re-graded results.jsonl")
     s = sub.add_parser("selftest")
     s.add_argument("kind", choices=["null", "violator", "oracle", "slow_oracle"])
     s.add_argument("--case", default="N1")
     a = p.parse_args(argv)
     return {"init-state": cmd_init_state, "approve-harness": cmd_approve, "run": cmd_run,
-            "selftest": cmd_selftest}[a.cmd](a)
+            "selftest": cmd_selftest, "regrade": cmd_regrade}[a.cmd](a)
 
 
 if __name__ == "__main__":

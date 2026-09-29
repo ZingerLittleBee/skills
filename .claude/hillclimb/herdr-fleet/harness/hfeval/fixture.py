@@ -8,6 +8,9 @@ Layout of `<attempt>/`:
   state/         XDG_STATE_HOME (round archives land here)
   xdg-config/    XDG_CONFIG_HOME, holding only herdr-fleet/slots.yml
   herdr/         HERDR_CONFIG_PATH target
+  codex-home/    CODEX_HOME: a copy of the user's codex config.toml (so trust
+                 prompts persist here, not in the user's file) plus symlinks
+                 to auth, instructions, hooks and plugins; sessions stay local
   plugin/        with-skill only: plugin wrapper around the skill copy
   policy/        rigged reviewer policies, when the catalog uses one
   logs/          harness logs, snapshots, injector records
@@ -51,6 +54,7 @@ class Attempt:
     state = property(lambda s: s.root / "state")
     xdg_config = property(lambda s: s.root / "xdg-config")
     herdr_config = property(lambda s: s.root / "herdr" / "config.toml")
+    codex_home = property(lambda s: s.root / "codex-home")
     plugin = property(lambda s: s.root / "plugin")
     policy = property(lambda s: s.root / "policy")
     logs = property(lambda s: s.root / "logs")
@@ -87,6 +91,7 @@ def build(attempt: Attempt, case: Case, with_skill: bool, skill_source: Path) ->
     _build_repo(attempt, case)
     _write_catalog(attempt, case)
     _write_herdr_config(attempt)
+    _write_codex_home(attempt)
     if with_skill:
         _write_plugin(attempt, skill_source)
 
@@ -99,6 +104,26 @@ def build(attempt: Attempt, case: Case, with_skill: bool, skill_source: Path) ->
     }
     attempt.write_meta(case=case.id, with_skill=with_skill, **facts)
     return facts
+
+
+# Per-session codex state that must not be shared with the user's CODEX_HOME.
+CODEX_LOCAL = {"config.toml", "sessions", "archived_sessions", "history.jsonl", "session_index.jsonl", "log",
+               "logs", "shell_snapshots", "state", "sqlite", "cache", "ipc", "process_manager"}
+
+
+def _write_codex_home(attempt: Attempt) -> None:
+    src = HOME / ".codex"
+    home = attempt.codex_home
+    home.mkdir()
+    if (src / "config.toml").exists():
+        shutil.copy(src / "config.toml", home / "config.toml")
+    if not src.is_dir():
+        return
+    for entry in src.iterdir():
+        name = entry.name
+        if name in CODEX_LOCAL or ".sqlite" in name or name.startswith("config.toml"):
+            continue
+        (home / name).symlink_to(entry)
 
 
 def _build_repo(attempt: Attempt, case: Case) -> None:

@@ -17,8 +17,11 @@ from hfeval.config import EVAL_ROOT, HOME
 
 SESSION_PREFIX = "hfeval-"
 DEFAULT_SOCKET = HOME / ".config" / "herdr" / "herdr.sock"
-SCRUBBED_ENV = ("GH_TOKEN", "GITHUB_TOKEN", "HERDR_ENV", "HERDR_WORKSPACE_ID", "HERDR_PANE_ID",
-                "HERDR_SESSION", "HERDR_SOCKET_PATH", "ANTHROPIC_API_KEY")
+SCRUBBED_ENV = ("GH_TOKEN", "GITHUB_TOKEN", "ANTHROPIC_API_KEY", "CLAUDECODE", "CLAUDE_PID", "CLAUDE_EFFORT",
+                "CODEX_HOME")
+# Prefixes of variables that belong to the session running the harness (its
+# herdr pane, its Claude Code session and messaging socket), never the eval.
+SCRUBBED_PREFIXES = ("HERDR_", "CLAUDE_CODE_", "UV_")
 
 
 def session_dir(name: str) -> Path:
@@ -33,7 +36,7 @@ def base_env() -> dict[str, str]:
     """The user's environment minus secrets, herdr targeting and the harness's own venv."""
     env = {k: v for k, v in os.environ.items()
            if k not in SCRUBBED_ENV and k not in ("PWD", "OLDPWD", "VIRTUAL_ENV", "PYTHONPATH")
-           and not k.startswith("UV_")}
+           and not k.startswith(SCRUBBED_PREFIXES)}
     env["PATH"] = os.pathsep.join(p for p in env.get("PATH", "").split(os.pathsep)
                                   if p and not p.startswith(str(EVAL_ROOT)))
     return env

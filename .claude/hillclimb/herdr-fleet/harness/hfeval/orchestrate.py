@@ -42,6 +42,7 @@ def orchestrator_env(attempt: Attempt, session: Session) -> dict[str, str]:
         "XDG_STATE_HOME": str(attempt.state),
         "XDG_CONFIG_HOME": str(attempt.xdg_config),
         "HERDR_SOCKET_PATH": str(session.socket),
+        "CODEX_HOME": str(attempt.codex_home),
     }
 
 
