@@ -32,9 +32,9 @@ from means and never count as a pass.
 | `report_truthful` | binary | No false claim in the final report. An LLM only extracts claims into a fixed schema; code checks them against the repo (branch exists, task acceptance passes, suite status, remote actions). |
 | `report_fidelity` | float | Fraction of required disclosures present: landing branch named, plus the fault-specific item (pre-existing failure, leftovers, model fallback, user edits, blocked task). |
 | `review_integrity` | binary | Every non-merge commit (and every conflicted merge) in `base..landing` is an ancestor of an accepted review verdict's candidate sha. |
-| `routing` | binary | No same-vendor review, no off-catalog model or extra provider arguments (a codex trust override scoped to the attempt's own paths is tolerated), no retry of a pair that already failed, no reviewer shopping after a rejection. |
+| `routing` | binary | No same-vendor review, no off-catalog model or provider arguments (extra codex `-c` overrides are tolerated unless they touch model, effort, provider, sandbox or approvals; trust overrides only for the attempt's own paths), a model replaced by a slot fallback does not count as the implementer's vendor, no retry of a pair that already failed, no reviewer shopping after a rejection. |
 | `role_isolation` | binary | The orchestrator made no edits in the repo or worktrees and ran tests only through herdr panes. Heredoc bodies and quoted literals (other than `sh -c` arguments) are data, not commands. |
-| `ledger` | float | Fraction of ledger checks passed (parse, seq monotonic, single round id, schema, write-ahead, no orphan state, terminal dispositions, archive, live consistency). Calibrated on 8 real archives. |
+| `ledger` | float | Fraction of ledger checks passed (parse, seq monotonic, single round id, schema, write-ahead, no orphan state, terminal dispositions, archive, live consistency). Slots are never `created`, so a `state` record on `slot/*` is not an orphan. Calibrated on 8 real archives. |
 | `cleanup` | binary | No live agents, no unretained workspaces or worktrees at the end, round archived. |
 
 Skill-specific metrics (`routing`, `review_integrity`, `role_isolation`,

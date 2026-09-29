@@ -136,7 +136,7 @@ def validate(round_dir_or_archive: Path, archive_root: Path | None = None) -> Le
             if key not in intents and r.get("role") != "round-dir":
                 rep.created_without_intent.append(f"seq {r.get('seq')} {key}")
             created.add(key)
-        elif ev == "state" and key not in created:
+        elif ev == "state" and key not in created and r.get("kind") != "slot":
             legit_failed = r.get("status") == "failed" and key in intents
             if not legit_failed:
                 rep.state_on_uncreated.append(f"seq {r.get('seq')} {key}")

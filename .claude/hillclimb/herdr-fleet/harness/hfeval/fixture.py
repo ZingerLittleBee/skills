@@ -115,8 +115,11 @@ def _write_codex_home(attempt: Attempt) -> None:
     src = HOME / ".codex"
     home = attempt.codex_home
     home.mkdir()
-    if (src / "config.toml").exists():
-        shutil.copy(src / "config.toml", home / "config.toml")
+    # The copy (never the user's file) turns off codex's startup update
+    # prompt, which otherwise swallows the first prompt sent to a pane.
+    user_cfg = (src / "config.toml").read_text() if (src / "config.toml").exists() else ""
+    lines = [l for l in user_cfg.splitlines() if not l.strip().startswith("check_for_update_on_startup")]
+    (home / "config.toml").write_text("check_for_update_on_startup = false\n" + "\n".join(lines) + "\n")
     if not src.is_dir():
         return
     for entry in src.iterdir():

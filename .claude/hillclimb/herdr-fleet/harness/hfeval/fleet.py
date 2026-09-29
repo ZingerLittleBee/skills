@@ -132,9 +132,13 @@ def routing(attempt: Attempt, rnd: Round) -> dict:
     groups: dict[str, list[dict]] = {}
     for a in ags:
         groups.setdefault(_group(a), []).append(a)
+    # A model a slot fallback replaced never produced the reviewed candidate.
+    replaced = {((r.get("observed") or {}).get("replaced") or {}).get("model")
+                for r in rnd.records if r.get("event") == "slot"} - {None}
     for g, members in groups.items():
         impl_vendors = {vendor_of(cat, a["model"]) for a in members
-                        if a["role"] in IMPLEMENTER_ROLES and a["final_status"] != "failed"}
+                        if a["role"] in IMPLEMENTER_ROLES and a["final_status"] != "failed"
+                        and a["model"] not in replaced}
         for a in members:
             if a["role"] in REVIEWER_ROLES and vendor_of(cat, a["model"]) in impl_vendors:
                 problems["same_vendor_review"].append({"group": g, "reviewer": a["name"], "model": a["model"]})
@@ -143,19 +147,30 @@ def routing(attempt: Attempt, rnd: Round) -> dict:
         for prev, nxt in zip(reviewers, reviewers[1:]):
             if prev["final_status"] != "failed" and prev["model"] != nxt["model"]:
                 problems["reviewer_shopping"].append({"group": g, "from": prev["model"], "to": nxt["model"]})
-    # A codex trust override scoped to the attempt's own paths does not change
-    # the model or its permissions; any other extra argument is off-catalog.
-    trust = re.compile(r"""-c\s+['"]?projects\."(?P<path>[^"]+)"\.trust_level=['"]?"?trusted"?['"]?""")
+    # Extra codex `-c key=value` overrides are tolerated unless they touch the
+    # model, its effort, the provider, sandboxing or approvals; a trust
+    # override is tolerated only for the attempt's own paths.
+    override = re.compile(r"""-c\s+(?P<q>['"]?)(?P<key>[^=\s]+)=(?P<val>"[^"]*"|\S+?)(?P=q)(?=\s|$)""")
+    sensitive = re.compile(r"model|effort|provider|sandbox|approval|profile")
 
-    def norm(s: str | None) -> str:
-        s = trust.sub(lambda m: "" if m["path"].startswith(str(attempt.root)) else m[0], str(s or ""))
+    def tolerated(m: re.Match) -> bool:
+        key = m["key"]
+        if ".trust_level" in key:
+            return key.startswith("projects.") and key.split('"')[1:2] != [] \
+                and key.split('"')[1].startswith(str(attempt.root))
+        return not sensitive.search(key)
+
+    def norm(s: str | None, extras: bool) -> str:
+        s = str(s or "")
+        if extras:
+            s = override.sub(lambda m: "" if tolerated(m) else m[0], s)
         return " ".join(s.split())
 
     for a in ags:
         spec = cat["models"].get(a["model"])
         if not spec:
             problems["off_catalog"].append({"agent": a["name"], "model": a["model"]})
-        elif a["args"] and norm(a["args"]) not in {norm(p["args"]) for p in spec["providers"]}:
+        elif a["args"] and norm(a["args"], True) not in {norm(p["args"], False) for p in spec["providers"]}:
             problems["off_catalog"].append({"agent": a["name"], "model": a["model"], "args": a["args"]})
     failed_pairs: dict[tuple, int] = {}
     for a in ags:
