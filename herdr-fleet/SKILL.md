@@ -126,7 +126,8 @@ installed CLIs, with the name each kind's herdr integration goes by:
 
 Every provider carries its auto-mode argument: a fleet agent that
 stops at an approval prompt stalls its package until the watch loop
-notices. The arguments go after `--` on every start:
+notices. The arguments go after `--` on every start, pasted in as
+the catalog's literal words (shell discipline, section 2):
 
 ```bash
 herdr agent start <name> --kind <kind> --pane <pane-id> -- <provider-args>
@@ -213,6 +214,11 @@ path in a command is the absolute path recorded in the manifest,
 written out literally, and a value a command needs is assigned and
 used inside that same command or pasted in as a literal. A snippet
 below that shows `<placeholder>` means the literal recorded value.
+Your tool calls may run in zsh, which leaves an unquoted `$var` as
+one word, so a placeholder that stands for several words, above all
+`<provider-args>`, is pasted as those literal words: a provider's
+`args` passed through a variable reach the CLI as a single argument,
+and the start fails.
 
 **Turn discipline.** The round runs unattended and the user is not
 watching in real time, so end a turn only at these points: the plan
