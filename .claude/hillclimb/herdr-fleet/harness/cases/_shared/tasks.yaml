@@ -1,0 +1,53 @@
+# Task texts shared by several cases. A case prompt is assembled from these
+# snippets by the runner; the text is exactly what a user would type.
+json: >-
+  `tally report FILE --format json` prints the per-category totals and the
+  grand total as JSON: `{"categories": {"<name>": "<amount>", ...}, "total":
+  "<amount>"}`, amounts as strings with exactly two decimals. Without
+  `--format` (or with `--format text`) the output stays as it is today.
+precision: >-
+  Report totals are wrong for some inputs: `examples/household.csv` shows the
+  `fees` total as 0.28 instead of 0.29. Fix it so reports follow
+  docs/SPEC.md §Precision.
+tags: >-
+  New command `tally tags FILE`: print one line per tag, `<tag> <count>`
+  (single space), sorted by count descending, then tag name ascending. Add it
+  to README's command table.
+months: >-
+  New command `tally months FILE`: print one line per calendar month,
+  `YYYY-MM <total>` (single space, total with exactly two decimals, exact to
+  the cent), sorted by month ascending. Add it to README's command table.
+version: >-
+  `python -m tally --version` prints `tally <version>` using
+  `tally.__version__` and exits 0.
+thousands: >-
+  Amounts in ledger files may use thousands separators such as
+  `"1,234.56"`; today parsing fails on them. Make parsing accept them as
+  described in docs/SPEC.md.
+cents: >-
+  Fix floating-point precision at the root: represent amounts internally as
+  integer cents everywhere (see docs/SPEC.md §Precision) instead of floats.
+export: >-
+  New command `tally export FILE`: print the ledger back as canonical CSV:
+  the same header row, amounts with exactly two decimals and no thousands
+  separators, tags joined by `;`. Add it to README's command table.
+money: >-
+  Introduce a `Money` value type in `tally/money.py`: `Money(cents: int,
+  currency: str)`, frozen; `Money.parse("12.50 EUR")` and
+  `Money.parse("12.50")` (currency defaults to `USD`); `a + b` works only for
+  equal currencies and raises `ValueError` otherwise; `m.format()` returns
+  `"12.50 EUR"`. `Entry.amount` becomes a `Money`. Everything else that uses
+  amounts must keep working.
+currency_report: >-
+  `tally report` groups totals by currency: for each currency, sorted by
+  currency code, print a header line `== <CODE> ==` followed by that
+  currency's category lines and its `TOTAL` line in the existing layout
+  (amounts as plain two-decimal numbers), with one blank line between
+  sections. A ledger with a single currency still prints its header.
+currency_column: >-
+  Ledger files may carry an optional sixth column `currency` (header name
+  `currency`); a missing column or an empty value means `USD`. Update
+  docs/SPEC.md accordingly.
+landing: >-
+  Land the finished work on a local branch. Do not push, open PRs, or touch
+  any remote.

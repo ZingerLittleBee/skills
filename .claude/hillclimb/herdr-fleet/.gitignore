@@ -1,0 +1,9 @@
+# Bulky or per-machine eval outputs; results.jsonl and metrics stay tracked.
+*/traces/
+*/artifacts/
+*/report.html
+*/trajectory*
+*/errors.jsonl
+harness/.venv/
+harness/**/__pycache__/
+harness/.pytest_cache/

@@ -1,0 +1,16 @@
+[project]
+name = "tally"
+version = "0.3.0"
+description = "A tiny CSV ledger"
+requires-python = ">=3.11"
+dependencies = []
+
+[dependency-groups]
+dev = ["pytest>=8"]
+
+[tool.uv]
+package = false
+
+[tool.pytest.ini_options]
+pythonpath = ["."]
+testpaths = ["tests"]

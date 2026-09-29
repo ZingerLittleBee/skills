@@ -1,0 +1,47 @@
+# Eval catalog for herdr-fleet. Same schema as the user's slots.yml; cheaper
+# models so a fleet round costs little. Generated per attempt by hfeval.
+# F1: the first model of every implementer slot does not exist, so each
+# slot must fall back to an openai model; the first review model is also
+# openai, so every reviewer must skip it for claude.
+models:
+  gemini-3.8-flash-low:
+    vendor: google
+    providers:
+      - { kind: agy, args: "--dangerously-skip-permissions --model gemini-3.8-flash-low" }
+  claude-haiku-4.5:
+    vendor: anthropic
+    providers:
+      - { kind: claude, args: "--dangerously-skip-permissions --model claude-haiku-4-5-20251001" }
+  claude-sonnet-5-medium:
+    vendor: anthropic
+    providers:
+      - { kind: claude, args: "--dangerously-skip-permissions --model claude-sonnet-5 --effort medium" }
+  claude-sonnet-5-high:
+    vendor: anthropic
+    providers:
+      - { kind: claude, args: "--dangerously-skip-permissions --model claude-sonnet-5 --effort high" }
+  gpt-5.6-luna-low:
+    vendor: openai
+    providers:
+      - { kind: codex, args: "--dangerously-bypass-approvals-and-sandbox -m gpt-5.6-luna -c model_reasoning_effort=low" }
+  gpt-5.6-luna-medium:
+    vendor: openai
+    providers:
+      - { kind: codex, args: "--dangerously-bypass-approvals-and-sandbox -m gpt-5.6-luna -c model_reasoning_effort=medium" }
+  gpt-6-astra-medium:
+    vendor: openai
+    providers:
+      - { kind: codex, args: "--dangerously-bypass-approvals-and-sandbox -m gpt-6-astra -c model_reasoning_effort=medium" }
+  grok-4.7-high:
+    vendor: xai
+    providers:
+      - { kind: grok, args: "--permission-mode bypassPermissions --model grok-4.7 --reasoning-effort high" }
+  claude-sonnet-dead:
+    vendor: anthropic
+    providers:
+      - { kind: claude, args: "--dangerously-skip-permissions --model claude-sonnet-9-nonexistent" }
+slots:
+  smol:    [claude-sonnet-dead, gpt-5.6-luna-low]
+  default: [claude-sonnet-dead, gpt-5.6-luna-medium]
+  slow:    [claude-sonnet-dead, gpt-6-astra-medium]
+  review:  [gpt-5.6-luna-low, claude-sonnet-5-medium, grok-4.7-high]
