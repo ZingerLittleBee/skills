@@ -141,3 +141,14 @@ def shell_code(cmd: str) -> str:
             pending.extend((m.group(3), m.group(1) == "-") for m in _HEREDOC.finditer(line))
     return "\n".join(out)
 
+
+_QUOTED_ASSIGN = re.compile(r"""(?<![\w$])([A-Za-z_]\w*)=(['"])(?:\\.|(?!\2).)*\2""", re.S)
+_VAR_EXEC = re.compile(r"""\beval\b|\b(?:ba|z)?sh\s+-c\s+["']?\$""")
+
+
+def command_code(cmd: str) -> str:
+    """`shell_code` without quoted values assigned to variables (brief text
+    such as `COMMON='... do not push ...'`), unless a variable is executed."""
+    code = shell_code(cmd)
+    return code if _VAR_EXEC.search(code) else _QUOTED_ASSIGN.sub(r"\1=''", code)
+

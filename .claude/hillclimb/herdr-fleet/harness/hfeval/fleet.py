@@ -302,7 +302,11 @@ def cleanup(attempt: Attempt, rnd: Round, before: dict, after: dict) -> dict:
                    if a.get("name") not in pre_agents]
     final = rnd.report.final if rnd.report else {}
     retained_ws = {(r.get("observed") or {}).get("workspace_id") for r in final.values() if r.get("status") == "retained"}
-    retained_paths = {(r.get("observed") or {}).get("path") for r in final.values() if r.get("status") == "retained"}
+    # A later state record may carry only part of `observed`; the path comes
+    # from any record of the retained resource.
+    retained_keys = {k for k, r in final.items() if r.get("status") == "retained"}
+    retained_paths = {(r.get("observed") or {}).get("path") or (r.get("selector") or {}).get("path")
+                      for r in rnd.records if r.get("resource_key") in retained_keys}
     pre_ws = {w.get("workspace_id") for w in before["herdr"].get("workspaces", [])}
     leftover_ws = [w.get("workspace_id") for w in after["herdr"].get("workspaces", [])
                    if w.get("workspace_id") not in pre_ws | retained_ws
