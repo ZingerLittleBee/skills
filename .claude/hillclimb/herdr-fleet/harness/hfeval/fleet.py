@@ -649,6 +649,9 @@ def fault_unresolvable_conflict(c: FaultContext) -> dict:
 _START_FAILED = re.compile(r"timed out waiting for agent startup|command not found|agent_start_failed", re.I)
 
 
+_CLI_PROBE = re.compile(r"\bcommand\s+-v\b|\bwhich\b|\btype\s+-[aP]\b|\bhash\b")
+
+
 def fault_host_start_failure(c: FaultContext) -> dict:
     kind = c.case.fault["kind"]
     start = re.compile(rf"herdr\s+agent\s+start\s+(\S+)[^\n;&|]*?--kind[= ]['\"]?{re.escape(kind)}\b")
@@ -671,12 +674,18 @@ def fault_host_start_failure(c: FaultContext) -> dict:
     live = [a["name"] for a in c.routing.get("agents", []) if a["kind"] == kind and a["final_status"] == "live"]
     probs = c.routing.get("routing_problems", {})
     bad_routing = {k: probs.get(k) for k in ("same_vendor_review", "failed_pair_retried") if probs.get(k)}
-    detail = {"trace_starts": starts, "first_failure_seen_at_call": seen_fail, "trace_retries": trace_retries,
+    # A preflight that finds the CLI missing avoids the kind without ever starting it.
+    preflight = [i for i, x in enumerate(calls) if (first is None or i < first) and _CLI_PROBE.search(
+        str(x.input.get("command", ""))) and kind in str(x.input.get("command", ""))]
+    detail = {"preflight_calls": preflight, "trace_starts": starts, "first_failure_seen_at_call": seen_fail,
+              "trace_retries": trace_retries,
               "same_name_restarted": same_name, "ledger_retries": ledger_retries, "live_on_kind": live,
               "routing_problems": bad_routing, "outcome": c.out.get("outcome")}
     handled = not trace_retries and not same_name and not ledger_retries and not live and not bad_routing \
         and c.outcome_ok
-    return {"fault_triggered": bool(starts or kind_records), "fault_handled": handled, "fault_detail": detail}
+    # Structural: the run refuses to start when the CLI is installed, and every
+    # implementer slot lists the kind first.
+    return {"fault_triggered": True, "fault_handled": handled, "fault_detail": detail}
 
 
 HELDOUT_FAULTS = {

@@ -382,7 +382,11 @@ def test_fault_host_start_failure(tmp_path):
     assert ok["fault_triggered"] and ok["fault_handled"]
     bad = fleet.fault_host_start_failure(_ctx(a, "H6", tr=OrchestratorTrace(calls=[fail, agy, retry])))
     assert bad["fault_handled"] is False and bad["fault_detail"]["trace_retries"] == ["only"]
-    assert fleet.fault_host_start_failure(_ctx(a, "H6", tr=OrchestratorTrace()))["fault_triggered"] is False
+    # A preflight finds the CLI missing; the kind is never started.
+    probe = ToolCall(0, "Bash", {"command": "for b in gemini agy codex; do command -v $b || echo MISSING; done"},
+                     result="gemini: MISSING")
+    pre = fleet.fault_host_start_failure(_ctx(a, "H6", tr=OrchestratorTrace(calls=[probe, agy])))
+    assert pre["fault_triggered"] and pre["fault_handled"] and pre["fault_detail"]["preflight_calls"] == [0]
 
 
 def test_fault_unresolvable_conflict(tmp_path):
