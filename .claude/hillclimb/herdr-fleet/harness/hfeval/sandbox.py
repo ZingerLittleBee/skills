@@ -76,6 +76,24 @@ AGENT_TOOLS = {
 }
 
 
+def _under(path: Path, root: Path) -> bool:
+    return path == root or root in path.parents
+
+
+def attempt_can_write(path: Path | str, attempt_root: Path) -> bool:
+    """Whether the attempt's profile lets a process write `path` (same rule order as `profile`)."""
+    path = Path(path)
+    if path == HOME / ".config" / "herdr" / ".plugins.lock":
+        return True
+    if path in PROTECTED_FILES or any(_under(path, t) for t in PROTECTED_TREES):
+        return False
+    allowed = [HOME / p for p in ALLOW_WRITE_HOME] + ALLOW_WRITE_OTHER + [attempt_root]
+    if any(_under(path, r) for r in allowed) or any(str(path).startswith(str(HOME / p))
+                                                     for p in ALLOW_WRITE_HOME_LITERAL_PREFIX):
+        return True
+    return not any(_under(path, r) for r in DENY_WRITE_ROOTS)
+
+
 def _q(p: Path | str) -> str:
     return json.dumps(str(p))
 

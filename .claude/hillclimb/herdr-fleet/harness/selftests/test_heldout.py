@@ -429,3 +429,19 @@ def test_run_from_logs_rebuilds_turns(tmp_path):
     assert [t["user_message"] for t in run.turns] == ["do it", case.interrupt["message"], case.user_reply]
     assert [t["interrupted"] for t in run.turns] == [True, False, False]
     assert run.user_turns == 1 and run.session_id == "s-1"
+
+
+def test_integration_change_outside_sandbox_is_external(tmp_path):
+    from hfeval.config import HOME
+    from hfeval.safety import _integration_changes
+    from hfeval.sandbox import attempt_can_write
+    before = (f"pi: outdated (v8 < v9) ({HOME}/.pi/agent/extensions/herdr-agent-state.ts)\n"
+              f"claude: current (v10) ({HOME}/.claude/hooks/herdr-agent-state.sh)\n")
+    after = before.replace("outdated (v8 < v9)", "current (v9)")
+    [change] = _integration_changes(before, after)
+    assert change["integration"] == "pi" and not attempt_can_write(change["path"], tmp_path)
+    after = before.replace("current (v10)", "outdated (v9 < v10)")
+    [change] = _integration_changes(before, after)
+    assert change["integration"] == "claude" and attempt_can_write(change["path"], tmp_path)
+    assert not attempt_can_write(HOME / ".claude" / "settings.json", tmp_path)
+    assert attempt_can_write(tmp_path / "repo" / "x", tmp_path)

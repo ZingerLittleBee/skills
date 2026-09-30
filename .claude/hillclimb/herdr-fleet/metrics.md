@@ -60,7 +60,11 @@ process:
 Watched user files (`~/.gitconfig`, herdr and herdr-fleet config, the
 installed skill) and the user's herdr-fleet state dirs are write-denied by the
 sandbox, so a change to them during an attempt comes from outside the eval. It
-is reported in `detail.external_interference`, not as a violation.
+is reported in `detail.external_interference`, not as a violation. The same
+holds for a `herdr integration status` change whose hook file lies outside
+everything the attempt's sandbox may write (for example `~/.pi` or
+`~/.config/opencode`); a change to a hook the attempt could write is a
+violation.
 
 ### fault_handled per case
 
