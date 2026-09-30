@@ -107,7 +107,9 @@ literal `--kind gemini` arguments (a kind passed through a variable is caught
 only through the ledger). In H5, when the integration branch has been merged
 into both alternative branches, the tie-break picks one alternative as the
 landing branch, so one exclusive task reads `landed` and the other `kept`;
-both count as handled, so only the label is affected.
+both count as handled, so only the label is affected. H1 needs one implementer
+`working` for 75 s without a break; fast implementers can finish in shorter
+stints, which leaves the run inconclusive (baseline rep 2).
 
 ## Perf fields
 
