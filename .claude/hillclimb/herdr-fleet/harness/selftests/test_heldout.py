@@ -400,3 +400,32 @@ def test_fault_unresolvable_conflict(tmp_path):
     res = fleet.fault_unresolvable_conflict(_ctx(a, "H5", out=out, after={"worktrees": []}))
     assert res["fault_detail"]["status"]["sort_amount"] == "branch_without_worktree"
     assert res["fault_handled"] is False
+
+
+# ------------------------------------------------ shared logs and finish ---
+
+def test_user_edit_ticks_ignore_heldout_injector_rows(tmp_path):
+    from hfeval.safety import user_edit_ticks
+    a = _attempt(tmp_path)
+    inject.record(a, inject.INJECTOR_LOG, action="killed", agent="stats")
+    assert user_edit_ticks(a) == []
+    inject.record(a, inject.INJECTOR_LOG, tick=1, head="refs/heads/main", appended="<!-- note 1 -->")
+    assert [t["tick"] for t in user_edit_ticks(a)] == [1]
+
+
+def test_run_from_logs_rebuilds_turns(tmp_path):
+    from hfeval.cli import run_from_logs
+    a = _attempt(tmp_path)
+    case = load_case("H4")
+    a.write_meta(prompt="do it")
+    (a.logs / "snapshot-before.json").write_text("{}")
+    init = json.dumps({"type": "system", "subtype": "init", "session_id": "s-1"})
+    done = json.dumps({"type": "result", "subtype": "success", "result": "ok?"})
+    (a.logs / "orchestrator-0.jsonl").write_text(init + "\n")            # cut off: no result
+    (a.logs / "orchestrator-1.jsonl").write_text(init + "\n" + done + "\n")
+    (a.logs / "orchestrator-2.jsonl").write_text(init + "\n" + done + "\n")
+    inject.record(a, inject.INTERRUPT_LOG, action="orchestrator_killed", pause_s=240)
+    run = run_from_logs(a, case)
+    assert [t["user_message"] for t in run.turns] == ["do it", case.interrupt["message"], case.user_reply]
+    assert [t["interrupted"] for t in run.turns] == [True, False, False]
+    assert run.user_turns == 1 and run.session_id == "s-1"

@@ -3,6 +3,7 @@
   hfeval init-state --flow herdr-fleet
   hfeval approve-harness --flow herdr-fleet        (the user's to run)
   hfeval run --flow herdr-fleet --variant baseline --cases N1 --reps 1 [--no-skill]
+  hfeval finish --attempt DIR --flow F            (grade a run whose grading crashed)
   hfeval selftest null|violator|oracle --case N1   (no paid calls)
 """
 
@@ -20,7 +21,7 @@ import traceback
 from datetime import datetime
 from pathlib import Path
 
-from hfeval import collect, fixture, grade, herdr, orchestrate, sandbox, seeds, trace, usage
+from hfeval import collect, fixture, grade, herdr, inject, orchestrate, sandbox, seeds, trace, usage
 from hfeval.config import (EVAL_ROOT, HARNESS, HELDOUT_FLOW, HELDOUT_ORACLES, RUNS_TMP, SKILL_SOURCE, all_cases,
                            full_prompt, harness_sha, heldout_cases, load_case)
 
@@ -318,6 +319,59 @@ def cmd_regrade(a) -> int:
     return 0
 
 
+def run_from_logs(attempt: fixture.Attempt, case) -> orchestrate.OrchestratorRun:
+    """Rebuild the turn record of a finished orchestration from its logs.
+    Timing is approximate: first snapshot to last orchestrator log write."""
+    logs = sorted(attempt.logs.glob("orchestrator-*.jsonl"), key=lambda p: int(p.stem.split("-")[1]))
+    cuts = len(inject.read_log(attempt, inject.INTERRUPT_LOG))
+    run = orchestrate.OrchestratorRun(session_id=_session_id(attempt),
+                                      started=(attempt.logs / "snapshot-before.json").stat().st_mtime,
+                                      ended=max(p.stat().st_mtime for p in logs))
+    message = attempt.meta()["prompt"]
+    for i, log in enumerate(logs):
+        events = orchestrate._read_jsonl(log)
+        result = next((e for e in reversed(events) if e.get("type") == "result"), {})
+        interrupted = not result and len(run.interrupts) < cuts
+        run.turns.append({"turn": i, "user_message": message, "log": log.name, "exit": None,
+                          "result_subtype": result.get("subtype"), "cost_usd": result.get("total_cost_usd"),
+                          "duration_ms": result.get("duration_ms"), "interrupted": interrupted})
+        run.budget_exhausted = result.get("subtype") == "error_max_budget_usd"
+        if interrupted:
+            run.interrupts.append(inject.read_log(attempt, inject.INTERRUPT_LOG)[len(run.interrupts)])
+            message = case.interrupt["message"]
+        else:
+            message = case.user_reply
+            if i + 1 < len(logs):
+                run.user_turns += 1
+    return run
+
+
+def cmd_finish(a) -> int:
+    """Grade an attempt whose orchestration finished but whose grading hit a
+    harness error. Runs the judge once; never re-runs the fleet."""
+    attempt = fixture.Attempt(Path(a.attempt))
+    m = attempt.meta()
+    case = load_case(m["case"])
+    variant_dir = flow_dir(a.flow) / a.variant
+    if (case.id, m["rep"]) in _done(variant_dir / "results.jsonl"):
+        sys.exit(f"{case.id} rep{m['rep']} already has a row in {variant_dir}")
+    run = run_from_logs(attempt, case)
+    before = json.loads((attempt.logs / "snapshot-before.json").read_text())
+    after = json.loads((attempt.logs / "snapshot-after.json").read_text())
+    denials = json.loads((attempt.logs / "denials.json").read_text())
+    config = {"wall_clock_s": m["wall_clock_s"], "budget_usd": m["budget_usd"], "requested_model": m["requested_model"],
+              "catalog": case.catalog, "session": m["session"]}
+    row, tr = _finish(case, attempt, run, before=before, after=after, denials=denials, rep=m["rep"],
+                      run_id=m["run_id"], prompt=m["prompt"], with_skill=m["with_skill"], use_judge=True,
+                      config=config)
+    row["meta"]["run_harness_sha"] = m["harness_sha"]
+    row["meta"]["latency_from_file_times"] = True
+    row["tags"].append("finished_after_harness_error")
+    _persist(variant_dir, case.id, m["rep"], row, tr, attempt)
+    print(json.dumps({"case": case.id, "rep": m["rep"], "grade": row["grade"], "tags": row["tags"]}))
+    return 0
+
+
 def cmd_selftest(a) -> int:
     script = HARNESS / "selftests" / "fakes" / f"{a.kind}.sh"
     variant_dir = RUNS_TMP / "selftest-flow" / a.kind
@@ -352,13 +406,17 @@ def main(argv: list[str] | None = None) -> int:
     s = sub.add_parser("regrade")
     s.add_argument("--src", required=True, help="results.jsonl to re-grade")
     s.add_argument("--dest", required=True, help="directory for the re-graded results.jsonl")
+    s = sub.add_parser("finish")
+    s.add_argument("--attempt", required=True, help="attempt dir whose grading failed")
+    s.add_argument("--flow", required=True)
+    s.add_argument("--variant", default="baseline")
     s = sub.add_parser("selftest")
     s.add_argument("kind", choices=["null", "violator", "oracle", "slow_oracle"])
     s.add_argument("--case", default="N1")
     s.add_argument("--oracle", help="oracle overlay dir for the oracle fakes (default a)")
     a = p.parse_args(argv)
     return {"init-state": cmd_init_state, "approve-harness": cmd_approve, "run": cmd_run,
-            "selftest": cmd_selftest, "regrade": cmd_regrade}[a.cmd](a)
+            "selftest": cmd_selftest, "regrade": cmd_regrade, "finish": cmd_finish}[a.cmd](a)
 
 
 if __name__ == "__main__":
