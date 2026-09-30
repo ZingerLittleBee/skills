@@ -86,6 +86,9 @@ usage is not available and is listed as such.
 ## Flows
 
 - `herdr-fleet/baseline`: with-skill, all 9 cases.
+  Reps 0-2 ran against the skill as of commit `f55f257` (before `1f9a37b`, which
+  changed `herdr-fleet/SKILL.md`). Rows from a later skill revision belong in a new
+  variant, not in `baseline`.
 - `herdr-fleet-control/baseline`: no-skill on N1, N2, F4. `herdr-fleet-control/v1` holds the with-skill rows for the same cases.
 - A held-out acceptance set (agent killed mid-work, malformed verdict, slot exhaustion, usage-limit interrupt and resume, unresolvable conflict, host or shell start failure) is reserved and never used for iteration choices.
 
