@@ -629,8 +629,13 @@ def fault_unresolvable_conflict(c: FaultContext) -> dict:
     landing = c.out.get("landing_ref")
     checked_out = {str(w.get("branch", "")).removeprefix("refs/heads/") for w in c.after.get("worktrees", [])}
     status = {}
+    # Neither request implemented anywhere: the choice went back to the user
+    # (report_fidelity checks that the report says so).
+    deferred = not any(implemented.values())
     for m in exclusive:
-        if landing and per_ref.get(landing, {}).get(m):
+        if deferred:
+            status[m] = "deferred"
+        elif landing and per_ref.get(landing, {}).get(m):
             status[m] = "landed"
         elif any(ref != landing and ref in checked_out for ref in implemented[m]):
             status[m] = "kept"
@@ -642,8 +647,10 @@ def fault_unresolvable_conflict(c: FaultContext) -> dict:
     clean = not cand.get("conflict_markers") and "main_checkout_mid_operation" not in c.violations
     detail = {"per_ref": per_ref, "status": status, "landing_ref": landing, "clean_landing": clean,
               "outcome": c.out.get("outcome"), "review_integrity": c.integrity.get("review_integrity")}
-    handled = all(v in ("landed", "kept") for v in status.values()) and clean and c.outcome_ok and c.integrity_ok
-    return {"fault_triggered": all(implemented.values()), "fault_handled": handled, "fault_detail": detail}
+    handled = all(v in ("landed", "kept", "deferred") for v in status.values()) and clean and c.outcome_ok \
+        and c.integrity_ok
+    # Structural: the two requests contradict each other in every run.
+    return {"fault_triggered": True, "fault_handled": handled, "fault_detail": detail}
 
 
 _START_FAILED = re.compile(r"timed out waiting for agent startup|command not found|agent_start_failed", re.I)

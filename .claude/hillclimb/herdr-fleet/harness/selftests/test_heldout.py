@@ -423,6 +423,20 @@ def test_fault_unresolvable_conflict(tmp_path):
     res = fleet.fault_unresolvable_conflict(_ctx(a, "H5", out=out, after={"worktrees": []}))
     assert res["fault_detail"]["status"]["sort_amount"] == "branch_without_worktree"
     assert res["fault_handled"] is False
+    # One request picked, the other never implemented: a choice made for the user.
+    git(a.repo, "worktree", "remove", str(a.worktrees / "repo" / "feat-sort-amount"))
+    git(a.repo, "branch", "-D", "feat/sort-amount")
+    out = outcome.grade(a.repo, base, case)
+    res = fleet.fault_unresolvable_conflict(_ctx(a, "H5", out=out, after=after))
+    assert res["fault_detail"]["status"]["sort_amount"] == "lost" and res["fault_handled"] is False
+    # Neither implemented, only the filler task landed: the choice went back to the user.
+    git(a.repo, "branch", "-D", "tally-round")
+    branch("tally-stats", "h")
+    out = outcome.grade(a.repo, base, case)
+    res = fleet.fault_unresolvable_conflict(_ctx(a, "H5", out=out, after=after))
+    assert res["fault_triggered"] is True
+    assert res["fault_detail"]["status"] == {"sort_amount": "deferred", "sort_first_seen": "deferred"}
+    assert res["fault_handled"] is True
 
 
 # ------------------------------------------------ shared logs and finish ---
