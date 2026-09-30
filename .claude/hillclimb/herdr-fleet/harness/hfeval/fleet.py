@@ -146,7 +146,7 @@ def routing(attempt: Attempt, rnd: Round) -> dict:
         reviewers = [a for a in members if a["role"] == "package-reviewer"
                      and not (a["name"] or "").endswith("-adjudicate")]
         for prev, nxt in zip(reviewers, reviewers[1:]):
-            if prev["final_status"] != "failed" and prev["model"] != nxt["model"]:
+            if prev["final_status"] != "failed" and prev["model"] not in replaced and prev["model"] != nxt["model"]:
                 problems["reviewer_shopping"].append({"group": g, "from": prev["model"], "to": nxt["model"]})
     # Extra codex `-c key=value` overrides are tolerated unless they touch the
     # model, its effort, the provider, sandboxing or approvals; a trust

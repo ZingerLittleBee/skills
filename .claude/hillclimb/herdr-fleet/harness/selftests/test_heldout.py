@@ -309,6 +309,25 @@ def test_routing_allows_one_restart_of_a_killed_agent(tmp_path):
     assert len(retried) == 1 and retried[0]["agent"] == "stats"  # the third start, after a second death
 
 
+def test_routing_reviewer_replaced_by_slot_fallback_is_not_shopping(tmp_path):
+    a = _attempt(tmp_path)
+    (a.xdg_config / "herdr-fleet" / "slots.yml").write_text(catalog_path("review-dead-fixed").read_text())
+    key = "package/stats/reviewer"
+    dead = {"name": "stats-review", "model": "claude-sonnet-dead", "provider_kind": "claude"}
+    good = {"name": "stats-review", "model": "claude-sonnet-5-medium", "provider_kind": "claude"}
+    records = [_rec(1, "created", "package/stats/implementer",
+                    observed={"name": "stats", "model": "gpt-5.6-luna-medium", "provider_kind": "codex"}),
+               _rec(2, "created", key, role="package-reviewer", observed=dead),
+               _rec(3, "state", key, role="package-reviewer", status="removed", observed=dead),
+               _rec(5, "created", key, role="package-reviewer", observed=good)]
+    rnd = fleet.Round(records=records, report=ledger.LedgerReport())
+    assert fleet.routing(a, rnd)["routing_problems"]["reviewer_shopping"]  # no slot record: a reviewer swap
+    slot = _rec(4, "slot", "slot/review", kind="slot", role="slot",
+                observed={**good, "replaced": {"model": "claude-sonnet-dead", "provider_kind": "claude"}})
+    rnd = fleet.Round(records=[*records[:3], slot, records[3]], report=ledger.LedgerReport())
+    assert fleet.routing(a, rnd)["routing_problems"]["reviewer_shopping"] == []
+
+
 def test_fault_malformed_verdict(tmp_path):
     a = _attempt(tmp_path)
     inject.record(a, inject.INJECTOR_LOG, action="corrupted", file="/x/find-verdict-abc.json", slug="find",
