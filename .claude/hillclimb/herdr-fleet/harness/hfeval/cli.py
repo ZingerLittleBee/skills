@@ -313,7 +313,9 @@ def cmd_regrade(a) -> int:
         row["meta"]["run_harness_sha"] = m.get("run_harness_sha", m["harness_sha"])
         row["meta"]["judge_cost_usd"] = m.get("judge_cost_usd")
         row["judge_model"], row["judge_usage"] = old.get("judge_model"), old.get("judge_usage")
-        row["tags"] = old["tags"] + (["regraded"] if "regraded" not in old["tags"] else [])
+        # Grade-derived tags come from the new grade; provenance tags carry over.
+        kept = [t for t in old["tags"] if t not in row["tags"] and t not in ("fault_not_triggered", "regraded")]
+        row["tags"] = row["tags"] + kept + ["regraded"]
         _persist(dest, case.id, m["rep"], row, tr, attempt)
         print(json.dumps({"case": case.id, "rep": m["rep"], "old": old["grade"], "new": row["grade"]}))
     return 0
