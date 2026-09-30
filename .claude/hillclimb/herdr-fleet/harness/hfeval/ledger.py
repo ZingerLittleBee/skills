@@ -16,8 +16,8 @@ KINDS = {"worktree", "workspace", "tab", "pane", "agent", "branch", "dir", "slot
 ROLES = {
     "package-container", "package-implementer", "package-reviewer", "check-pane", "review-pane",
     "scout-container", "scout", "merge-container", "merge-implementer", "merge-implementer-pane",
-    "merge-reviewer", "merge-reviewer-pane", "merge-check-pane", "package-branch", "round-dir",
-    "round-workspace", "merge-target", "round-archive", "container-root-pane", "slot",
+    "merge-reviewer", "merge-reviewer-pane", "merge-check-pane", "merge-worktree", "package-branch",
+    "round-dir", "round-workspace", "merge-target", "round-archive", "container-root-pane", "slot",
 }
 POLICIES = {"remove-when-merged", "close-aux", "close-container", "delete-on-success", "report-only"}
 STATUSES = {"planned", "live", "removed", "retained", "failed"}
