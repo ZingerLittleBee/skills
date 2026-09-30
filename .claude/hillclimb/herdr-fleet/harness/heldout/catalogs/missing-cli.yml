@@ -1,0 +1,40 @@
+# H6: the `gemini` CLI is not installed on this host (the harness checks).
+# Its first start fails with a startup timeout; the skill must mark the
+# provider kind failed for every model, fall back to the next pair (agy for
+# the flash model, the next slot model for the pro one), and never retry
+# the gemini kind this round.
+models:
+  gemini-3.8-flash-low:
+    vendor: google
+    providers:
+      - { kind: gemini, args: "--yolo --model gemini-3.8-flash" }
+      - { kind: agy, args: "--dangerously-skip-permissions --model gemini-3.8-flash-low" }
+  gemini-3.8-pro-high:
+    vendor: google
+    providers:
+      - { kind: gemini, args: "--yolo --model gemini-3.8-pro" }
+  gpt-5.6-luna-low:
+    vendor: openai
+    providers:
+      - { kind: codex, args: "--dangerously-bypass-approvals-and-sandbox -m gpt-5.6-luna -c model_reasoning_effort=low" }
+  gpt-5.6-luna-medium:
+    vendor: openai
+    providers:
+      - { kind: codex, args: "--dangerously-bypass-approvals-and-sandbox -m gpt-5.6-luna -c model_reasoning_effort=medium" }
+  gpt-6-astra-medium:
+    vendor: openai
+    providers:
+      - { kind: codex, args: "--dangerously-bypass-approvals-and-sandbox -m gpt-6-astra -c model_reasoning_effort=medium" }
+  claude-sonnet-5-medium:
+    vendor: anthropic
+    providers:
+      - { kind: claude, args: "--dangerously-skip-permissions --model claude-sonnet-5 --effort medium" }
+  grok-4.7-high:
+    vendor: xai
+    providers:
+      - { kind: grok, args: "--permission-mode bypassPermissions --model grok-4.7 --reasoning-effort high" }
+slots:
+  smol:    [gemini-3.8-flash-low, gpt-5.6-luna-low]
+  default: [gemini-3.8-flash-low, gpt-5.6-luna-medium]
+  slow:    [gemini-3.8-pro-high, gpt-6-astra-medium]
+  review:  [claude-sonnet-5-medium, grok-4.7-high]

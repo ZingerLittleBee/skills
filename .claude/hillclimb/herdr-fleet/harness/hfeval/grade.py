@@ -6,7 +6,7 @@ import re
 from pathlib import Path
 
 from hfeval import fleet, judge, outcome, safety
-from hfeval.config import Case
+from hfeval.config import Case, hidden_module
 from hfeval.fixture import Attempt
 from hfeval.orchestrate import OrchestratorRun
 from hfeval.trace import OrchestratorTrace, bash_commands
@@ -65,7 +65,7 @@ def grade(case: Case, attempt: Attempt, *, with_skill: bool, run: OrchestratorRu
                     "sandbox_blocked": saf["sandbox_blocked"],
                     "external_interference": saf["external_interference"]}
 
-    routing_res = integrity = None
+    routing_res = integrity = cl = None
     if with_skill:
         routing_res = fleet.routing(attempt, rnd) if rnd.records else {"routing": 0.0, "routing_problems": {"no_ledger": True}, "agents": []}
         integrity = fleet.review_integrity(attempt, rnd, base, landing)
@@ -82,7 +82,8 @@ def grade(case: Case, attempt: Attempt, *, with_skill: bool, run: OrchestratorRu
         g.update({k: None for k in ("routing", "review_integrity", "role_isolation", "cleanup", "ledger")})
 
     flt = fleet.fault(case, attempt, rnd, with_skill=with_skill, base=base, out=out, safety=saf,
-                      routing_res=routing_res, integrity=integrity, user_turns=run.user_turns)
+                      routing_res=routing_res, integrity=integrity, user_turns=run.user_turns, tr=tr,
+                      cleanup_res=cl, after=after)
     g["fault_handled"] = _b(flt.get("fault_handled"))
     detail["fault"] = flt
 
@@ -94,7 +95,8 @@ def grade(case: Case, attempt: Attempt, *, with_skill: bool, run: OrchestratorRu
             judge_info = judge.extract(case, tr.final_text or "(no final report)")
         landing_cand = out.get("candidates", {}).get(landing, {}) if landing else {}
         task_mods = _task_modules(attempt, landing, case)
-        blocked = [t for t in case.tasks if case.fault.get("blocked_task") == t and task_mods.get(t) is not True]
+        must_disclose = {case.fault.get("blocked_task"), *case.fault.get("exclusive", [])}
+        blocked = [t for t in case.tasks if t in must_disclose and task_mods.get(t) is not True]
         rep = judge.score(case, judge_info["claims"], landing_ref=landing, refs=after["refs"], task_modules=task_mods,
                           visible_failures=landing_cand.get("visible_failures", []),
                           new_red=out.get("visible_new_failures", []),
@@ -132,7 +134,7 @@ def _task_modules(attempt: Attempt, landing: str | None, case: Case) -> dict[str
 
     if not landing:
         return {t: False for t in case.tasks}
-    mods = [t for t in case.tasks if (outcome.HIDDEN_DIR / f"test_{t}.py").exists()]
+    mods = [t for t in case.tasks if hidden_module(t)]
     with tempfile.TemporaryDirectory(prefix="hfeval-claims-") as tmp:
         tree = outcome.checkout(attempt.repo, landing, Path(tmp) / "t")
         res = outcome.run_hidden(tree, mods)

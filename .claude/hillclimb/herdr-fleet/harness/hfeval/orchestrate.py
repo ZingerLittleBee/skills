@@ -5,7 +5,9 @@ it reaches the server through `HERDR_SOCKET_PATH` and creates its own
 round workspace). When a turn ends while the round is still open (live
 agents, a round directory without an archive, or a closing question) the
 simulated user answers with the case's `user_reply` via `--resume`, up to
-`max_user_turns`.
+`max_user_turns`. A case with `interrupt` has its first turn killed
+mid-round and resumed after a pause, without counting as a user turn; a
+case with `reply_catalog` has its catalog fixed before the first reply.
 """
 
 from __future__ import annotations
@@ -19,6 +21,7 @@ import time
 from dataclasses import dataclass, field
 from pathlib import Path
 
+from hfeval import inject
 from hfeval.config import Case
 from hfeval.fixture import Attempt, git
 from hfeval.herdr import Session, base_env
@@ -31,6 +34,7 @@ class OrchestratorRun:
     timed_out: bool = False
     budget_exhausted: bool = False
     session_id: str | None = None
+    interrupts: list[dict] = field(default_factory=list)
     started: float = 0.0
     ended: float = 0.0
 
@@ -68,15 +72,17 @@ def run(
 ) -> OrchestratorRun:
     out = OrchestratorRun(started=time.time())
     stop = threading.Event()
-    injectors = [threading.Thread(target=_inject, args=(attempt, spec, stop), daemon=True) for spec in case.injectors]
+    injectors = [threading.Thread(target=_inject, args=(attempt, session, spec, stop), daemon=True)
+                 for spec in case.injectors]
     for t in injectors:
         t.start()
     profile = attempt.logs / "sandbox.sb"
     deadline = out.started + wall_clock_s
     spent = 0.0
     message = prompt
+    turn = 0
     try:
-        for turn in range(1 + case.max_user_turns):
+        while True:
             remaining = deadline - time.time()
             if remaining <= 0:
                 out.timed_out = True
@@ -100,6 +106,12 @@ def run(
                 )
                 proc.stdin.write(message)
                 proc.stdin.close()
+                fired: dict = {}
+                watcher = None
+                if case.interrupt and not out.interrupts:
+                    watcher = threading.Thread(target=inject.interrupt_when_ready,
+                                               args=(attempt, session, proc, case.interrupt, fired), daemon=True)
+                    watcher.start()
                 try:
                     proc.wait(timeout=remaining)
                 except subprocess.TimeoutExpired:
@@ -108,6 +120,8 @@ def run(
                     if proc.poll() is None:
                         os.killpg(proc.pid, signal.SIGKILL)
                     out.timed_out = True
+                if watcher:
+                    watcher.join(timeout=30)
             events = _read_jsonl(log)
             result = next((e for e in reversed(events) if e.get("type") == "result"), {})
             init = next((e for e in events if e.get("type") == "system" and e.get("subtype") == "init"), {})
@@ -115,16 +129,24 @@ def run(
             spent += float(result.get("total_cost_usd") or 0.0)
             out.turns.append({"turn": turn, "user_message": message, "log": log.name, "exit": proc.returncode,
                               "result_subtype": result.get("subtype"), "cost_usd": result.get("total_cost_usd"),
-                              "duration_ms": result.get("duration_ms")})
+                              "duration_ms": result.get("duration_ms"), "interrupted": bool(fired)})
+            turn += 1
             if out.timed_out:
                 break
             if result.get("subtype") == "error_max_budget_usd" or spent >= budget_usd:
                 out.budget_exhausted = True
                 break
+            if fired and out.session_id:
+                out.interrupts.append(fired)
+                time.sleep(min(fired["pause_s"], max(deadline - time.time(), 0)))
+                message = case.interrupt["message"]
+                continue
             if not out.session_id or not _round_open(attempt, session, with_skill, result.get("result") or ""):
                 break
-            if turn == case.max_user_turns:
+            if out.user_turns == case.max_user_turns:
                 break
+            if case.reply_catalog and out.user_turns == 0:
+                inject.swap_catalog(attempt, case.reply_catalog)
             message = case.user_reply
             out.user_turns += 1
     finally:
@@ -145,8 +167,11 @@ def _read_jsonl(path: Path) -> list[dict]:
     return rows
 
 
-def _inject(attempt: Attempt, spec: dict, stop: threading.Event) -> None:
-    """R2: the user keeps editing a file in the main checkout mid-round."""
+def _inject(attempt: Attempt, session: Session, spec: dict, stop: threading.Event) -> None:
+    if spec.get("type") in inject.INJECTORS:
+        inject.INJECTORS[spec["type"]](attempt, session, spec, stop)
+        return
+    # R2: the user keeps editing a file in the main checkout mid-round.
     if spec.get("type") != "user_edit":
         return
     record = attempt.logs / "injector.jsonl"

@@ -1,0 +1,26 @@
+# H3: every implementer slot is openai, and the only review model is
+# anthropic but does not exist. The vendor rule leaves no reviewer, so the
+# review slot is exhausted and the round must stop and ask. The harness
+# swaps in review-dead-fixed.yml before the first user reply.
+models:
+  gpt-5.6-luna-low:
+    vendor: openai
+    providers:
+      - { kind: codex, args: "--dangerously-bypass-approvals-and-sandbox -m gpt-5.6-luna -c model_reasoning_effort=low" }
+  gpt-5.6-luna-medium:
+    vendor: openai
+    providers:
+      - { kind: codex, args: "--dangerously-bypass-approvals-and-sandbox -m gpt-5.6-luna -c model_reasoning_effort=medium" }
+  gpt-6-astra-medium:
+    vendor: openai
+    providers:
+      - { kind: codex, args: "--dangerously-bypass-approvals-and-sandbox -m gpt-6-astra -c model_reasoning_effort=medium" }
+  claude-sonnet-dead:
+    vendor: anthropic
+    providers:
+      - { kind: claude, args: "--dangerously-skip-permissions --model claude-sonnet-9-nonexistent" }
+slots:
+  smol:    [gpt-5.6-luna-low]
+  default: [gpt-5.6-luna-medium]
+  slow:    [gpt-6-astra-medium]
+  review:  [claude-sonnet-dead]

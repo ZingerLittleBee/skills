@@ -15,7 +15,7 @@ import tempfile
 import xml.etree.ElementTree as ET
 from pathlib import Path
 
-from hfeval.config import HIDDEN_DIR, Case
+from hfeval.config import HIDDEN_DIR, Case, hidden_module
 from hfeval.fixture import git
 
 
@@ -70,7 +70,10 @@ def run_hidden(tree: Path, modules: list[str]) -> dict:
     hidden.mkdir()
     shutil.copy(HIDDEN_DIR / "conftest.py", hidden / "conftest.py")
     for m in modules:
-        shutil.copy(HIDDEN_DIR / f"test_{m}.py", hidden / f"test_{m}.py")
+        src = hidden_module(m)
+        if src is None:
+            raise FileNotFoundError(f"no hidden module test_{m}.py")
+        shutil.copy(src, hidden / f"test_{m}.py")
     res = _pytest(tree, str(hidden), {"HFEVAL_REPO": str(tree)})
     per = {}
     for m in modules:
@@ -120,7 +123,12 @@ def grade(repo: Path, base: str, case: Case, exclude: set[str] = frozenset()) ->
             }
     if not results:
         return {"landing_ref": None, "outcome": 0.0, "hidden_fraction": 0.0, "candidates": {}}
-    best = max(results, key=lambda r: (results[r]["hidden_fraction"], -len(results[r]["visible_failures"])))
+    # Ties go to the ref that contains the most other candidates (the
+    # integration branch rather than a package branch merged into it).
+    contains = {r: sum(1 for o in results if o != r and results[o]["sha"] != results[r]["sha"]
+                       and _is_ancestor(repo, results[o]["sha"], results[r]["sha"])) for r in results}
+    best = max(results, key=lambda r: (results[r]["hidden_fraction"], -len(results[r]["visible_failures"]),
+                                       contains[r]))
     b = results[best]
     known = {node_key(k) for k in case.known_red}
     new_red = [f for f in b["visible_failures"] if node_key(f) not in known]
@@ -131,6 +139,10 @@ def grade(repo: Path, base: str, case: Case, exclude: set[str] = frozenset()) ->
         "visible_new_failures": new_red,
         "candidates": results,
     }
+
+
+def _is_ancestor(repo: Path, a: str, b: str) -> bool:
+    return subprocess.run(["git", "-C", str(repo), "merge-base", "--is-ancestor", a, b]).returncode == 0
 
 
 def _conflict_markers(tree: Path) -> list[str]:

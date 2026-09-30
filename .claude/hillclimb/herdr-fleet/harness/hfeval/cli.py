@@ -21,8 +21,8 @@ from datetime import datetime
 from pathlib import Path
 
 from hfeval import collect, fixture, grade, herdr, orchestrate, sandbox, seeds, trace, usage
-from hfeval.config import (EVAL_ROOT, HARNESS, RUNS_TMP, SKILL_SOURCE, all_cases, full_prompt, harness_sha,
-                           load_case)
+from hfeval.config import (EVAL_ROOT, HARNESS, HELDOUT_FLOW, HELDOUT_ORACLES, RUNS_TMP, SKILL_SOURCE, all_cases,
+                           full_prompt, harness_sha, heldout_cases, load_case)
 
 FLOWS_ROOT = EVAL_ROOT.parent  # .claude/hillclimb
 
@@ -84,8 +84,12 @@ def _done(results: Path) -> set[tuple[str, int]]:
 
 def run_attempt(case_id: str, rep: int, *, variant_dir: Path, with_skill: bool, run_id: str, wall_clock_s: int,
                 budget_usd: float, model: str | None, use_judge: bool, skill_source: Path,
-                fake: Path | None = None, keep: bool = True) -> dict:
+                fake: Path | None = None, fake_oracle: str | None = None, keep: bool = True) -> dict:
     case = load_case(case_id)
+    for tool in case.requires_absent:
+        found = shutil.which(tool, path=herdr.base_env().get("PATH"))
+        if found:
+            raise RuntimeError(f"{case.id} needs `{tool}` absent from PATH, found {found}")
     aid = secrets.token_hex(4)
     attempt = fixture.Attempt(RUNS_TMP / run_id / f"{case_id}_rep{rep}_{aid}")
     session = herdr.Session(f"hfeval-{aid}")
@@ -107,7 +111,7 @@ def run_attempt(case_id: str, rep: int, *, variant_dir: Path, with_skill: bool, 
         before = collect.snapshot(attempt, session)
         collect.save(attempt, "before", before)
         if fake:
-            run = _run_fake(attempt, session, fake, prompt, case)
+            run = _run_fake(attempt, session, fake, prompt, case, fake_oracle)
         else:
             run = orchestrate.run(attempt, session, case, prompt, with_skill=with_skill,
                                   wall_clock_s=wall_clock_s, budget_usd=budget_usd, model=model)
@@ -214,19 +218,22 @@ def _kill_strays(root: Path) -> None:
         subprocess.run(["kill", pid], capture_output=True)
 
 
-def _run_fake(attempt, session, script: Path, prompt: str, case) -> orchestrate.OrchestratorRun:
+def _run_fake(attempt, session, script: Path, prompt: str, case,
+              oracle: str | None = None) -> orchestrate.OrchestratorRun:
     """Self-test stand-in for the orchestrator: runs a shell script under the same sandbox/env."""
     out = orchestrate.OrchestratorRun(started=time.time())
     # The harness directory is read-denied inside the sandbox; stage copies.
     stage = attempt.root / "selftest"
     shutil.copytree(HARNESS / "oracles", stage / "oracles")
+    shutil.copytree(HELDOUT_ORACLES, stage / "oracles", dirs_exist_ok=True)
     shutil.copy(script, stage / script.name)
     script = stage / script.name
     env = {**orchestrate.orchestrator_env(attempt, session), "HFEVAL_REPO": str(attempt.repo),
-           "HFEVAL_ROOT": str(attempt.root), "HFEVAL_ORACLES": str(stage / "oracles")}
+           "HFEVAL_ROOT": str(attempt.root), "HFEVAL_ORACLES": str(stage / "oracles"),
+           **({"HFEVAL_ORACLE": oracle} if oracle else {})}
     log = attempt.logs / "orchestrator-0.jsonl"
     stop = threading.Event()
-    injectors = [threading.Thread(target=orchestrate._inject, args=(attempt, spec, stop), daemon=True)
+    injectors = [threading.Thread(target=orchestrate._inject, args=(attempt, session, spec, stop), daemon=True)
                  for spec in case.injectors]
     for th in injectors:
         th.start()
@@ -249,7 +256,13 @@ def cmd_run(a) -> int:
     _gate(a.flow)
     variant_dir = flow_dir(a.flow) / a.variant
     variant_dir.mkdir(parents=True, exist_ok=True)
-    cases = a.cases.split(",") if a.cases else [c.id for c in all_cases()]
+    heldout_flow = a.flow == HELDOUT_FLOW
+    default = heldout_cases() if heldout_flow else all_cases()
+    cases = a.cases.split(",") if a.cases else [c.id for c in default]
+    # The held-out set never mixes with the iteration flows, in either direction.
+    wrong = [c for c in cases if load_case(c).heldout != heldout_flow]
+    if wrong:
+        sys.exit(f"cases {wrong} do not belong to flow {a.flow}; held-out cases run only in {HELDOUT_FLOW}")
     done = _done(variant_dir / "results.jsonl")
     run_id = a.run_id or datetime.now().strftime("%Y%m%d-%H%M%S")
     for rep in range(a.reps):
@@ -310,7 +323,7 @@ def cmd_selftest(a) -> int:
     variant_dir = RUNS_TMP / "selftest-flow" / a.kind
     row = run_attempt(a.case, 0, variant_dir=variant_dir, with_skill=True, run_id=f"selftest-{a.kind}",
                       wall_clock_s=600, budget_usd=0, model=None, use_judge=False,
-                      skill_source=SKILL_SOURCE, fake=script)
+                      skill_source=SKILL_SOURCE, fake=script, fake_oracle=a.oracle)
     print(json.dumps({"grade": row["grade"], "tags": row["tags"],
                       "violations": [v["kind"] for v in row["meta"]["detail"]["safety_violations"]],
                       "landing_ref": row["meta"]["detail"]["landing_ref"]}, indent=1))
@@ -342,6 +355,7 @@ def main(argv: list[str] | None = None) -> int:
     s = sub.add_parser("selftest")
     s.add_argument("kind", choices=["null", "violator", "oracle", "slow_oracle"])
     s.add_argument("--case", default="N1")
+    s.add_argument("--oracle", help="oracle overlay dir for the oracle fakes (default a)")
     a = p.parse_args(argv)
     return {"init-state": cmd_init_state, "approve-harness": cmd_approve, "run": cmd_run,
             "selftest": cmd_selftest, "regrade": cmd_regrade}[a.cmd](a)

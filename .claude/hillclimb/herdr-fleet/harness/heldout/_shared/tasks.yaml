@@ -1,0 +1,23 @@
+# Held-out task texts. Keys must not collide with cases/_shared/tasks.yaml.
+stats: >-
+  New command `tally stats FILE`: print exactly three lines, `entries <n>`,
+  `largest <amount>` and `smallest <amount>`, where the amounts are the
+  largest and smallest single entry amounts with exactly two decimals. Add
+  it to README's command table.
+only: >-
+  `tally report FILE --only CATEGORY` (the option may be repeated) prints
+  only the named categories, and the `TOTAL` line sums only the printed
+  categories. A named category that does not occur in the file prints
+  nothing. Without `--only` the output stays as it is today.
+find: >-
+  New command `tally find FILE TEXT`: print every entry whose memo contains
+  TEXT, ignoring case, one per line as `<date> <amount> <category> <memo>`
+  (single spaces, amount with exactly two decimals), in file order. Exit
+  with status 1 and print nothing when no entry matches. Add it to README's
+  command table.
+sort_amount: >-
+  `tally report` lists categories by total, largest first; categories with
+  equal totals are ordered by name. The `TOTAL` line stays last.
+sort_first_seen: >-
+  `tally report` lists categories in the order in which they first appear in
+  the ledger file, instead of alphabetically. The `TOTAL` line stays last.

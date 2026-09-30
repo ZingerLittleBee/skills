@@ -25,7 +25,7 @@ import subprocess
 from dataclasses import dataclass
 from pathlib import Path
 
-from hfeval.config import CATALOGS, FIXTURE_BASE, HOME, POLICIES, Case
+from hfeval.config import FIXTURE_BASE, HOME, POLICIES, Case, catalog_path
 
 GIT_ENV = {
     "GIT_AUTHOR_NAME": "Tally Dev",
@@ -155,7 +155,7 @@ def _refs(repo: Path) -> dict[str, str]:
 
 
 def _write_catalog(attempt: Attempt, case: Case) -> None:
-    text = (CATALOGS / f"{case.catalog}.yml").read_text()
+    text = catalog_path(case.catalog).read_text()
     text = text.replace("{POLICY_DIR}", str(attempt.policy))
     for policy in POLICIES.glob("*.md"):
         shutil.copy(policy, attempt.policy / policy.name)

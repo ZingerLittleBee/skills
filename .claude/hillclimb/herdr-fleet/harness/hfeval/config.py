@@ -13,6 +13,12 @@ EVAL_ROOT = HARNESS.parent  # .claude/hillclimb/herdr-fleet
 CASES_DIR = HARNESS / "cases"
 SHARED = CASES_DIR / "_shared"
 HIDDEN_DIR = SHARED / "hidden"
+# Final acceptance set: never used to pick or tune a variant (heldout/README.md).
+HELDOUT_DIR = HARNESS / "heldout"
+HELDOUT_SHARED = HELDOUT_DIR / "_shared"
+HELDOUT_HIDDEN = HELDOUT_SHARED / "hidden"
+HELDOUT_ORACLES = HELDOUT_DIR / "oracles"
+HELDOUT_FLOW = "herdr-fleet-heldout"
 FIXTURE_BASE = HARNESS / "fixture" / "base"
 CATALOGS = HARNESS / "catalogs"
 POLICIES = HARNESS / "policies"
@@ -22,7 +28,8 @@ RUNS_TMP = Path("/private/tmp/hf-eval")
 HOME = Path.home()
 
 # Files hashed into the harness sha. Variants never touch these.
-HARNESS_GLOBS = ["hfeval/*.py", "cases/**/*", "catalogs/*", "policies/*", "fixture/base/**/*", "oracles/**/*"]
+HARNESS_GLOBS = ["hfeval/*.py", "cases/**/*", "catalogs/*", "policies/*", "fixture/base/**/*", "oracles/**/*",
+                 "heldout/**/*"]
 
 
 @dataclass
@@ -46,10 +53,21 @@ class Case:
     control_eligible: bool = False
     evidence_basis: str = ""
     note: str = ""
+    # Held-out cases only: a mid-turn orchestrator kill and resume (H4), a
+    # catalog swapped in before the first user reply (H3), and tools that
+    # must be absent from PATH for the fault to be real (H6).
+    interrupt: dict | None = None
+    reply_catalog: str | None = None
+    requires_absent: list[str] = field(default_factory=list)
+    root: Path = field(default=CASES_DIR, repr=False)
 
     @property
     def dir(self) -> Path:
-        return CASES_DIR / self.id
+        return self.root / self.id
+
+    @property
+    def heldout(self) -> bool:
+        return self.root == HELDOUT_DIR
 
     @property
     def fault_type(self) -> str:
@@ -57,19 +75,41 @@ class Case:
 
 
 def load_tasks() -> dict[str, str]:
-    return yaml.safe_load((SHARED / "tasks.yaml").read_text())
+    tasks = yaml.safe_load((SHARED / "tasks.yaml").read_text())
+    heldout = yaml.safe_load((HELDOUT_SHARED / "tasks.yaml").read_text())
+    clash = set(tasks) & set(heldout)
+    if clash:
+        raise ValueError(f"held-out task keys shadow shared ones: {sorted(clash)}")
+    return {**tasks, **heldout}
 
 
 def load_case(case_id: str) -> Case:
-    data = yaml.safe_load((CASES_DIR / case_id / "case.yaml").read_text())
-    unknown = set(data) - set(Case.__dataclass_fields__)
+    root = next((r for r in (CASES_DIR, HELDOUT_DIR) if (r / case_id / "case.yaml").exists()), None)
+    if root is None:
+        raise FileNotFoundError(f"no case {case_id}")
+    data = yaml.safe_load((root / case_id / "case.yaml").read_text())
+    unknown = set(data) - set(Case.__dataclass_fields__) | ({"root"} & set(data))
     if unknown:
         raise ValueError(f"{case_id}: unknown keys {sorted(unknown)}")
-    return Case(**data)
+    return Case(**data, root=root)
 
 
 def all_cases() -> list[Case]:
+    """The iteration set. Held-out cases are never part of it."""
     return [load_case(p.parent.name) for p in sorted(CASES_DIR.glob("*/case.yaml"))]
+
+
+def heldout_cases() -> list[Case]:
+    return [load_case(p.parent.name) for p in sorted(HELDOUT_DIR.glob("*/case.yaml"))]
+
+
+def catalog_path(name: str) -> Path:
+    return next(p for d in (CATALOGS, HELDOUT_DIR / "catalogs") if (p := d / f"{name}.yml").exists())
+
+
+def hidden_module(name: str) -> Path | None:
+    """Path of hidden acceptance module `test_<name>.py`, from either set."""
+    return next((p for d in (HIDDEN_DIR, HELDOUT_HIDDEN) if (p := d / f"test_{name}.py").exists()), None)
 
 
 def task_prompt(case: Case) -> str:

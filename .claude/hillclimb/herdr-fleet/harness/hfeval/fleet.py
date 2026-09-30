@@ -17,8 +17,9 @@ from pathlib import Path
 
 import yaml
 
+from hfeval import inject
 from hfeval import ledger as ledger_mod
-from hfeval.config import Case
+from hfeval.config import Case, catalog_path
 from hfeval.fixture import Attempt, git
 from hfeval.outcome import checkout, node_key, run_hidden, run_visible
 from hfeval.trace import OrchestratorTrace, bash_commands, shell_code
@@ -172,13 +173,19 @@ def routing(attempt: Attempt, rnd: Round) -> dict:
             problems["off_catalog"].append({"agent": a["name"], "model": a["model"]})
         elif a["args"] and norm(a["args"], True) not in {norm(p["args"], False) for p in spec["providers"]}:
             problems["off_catalog"].append({"agent": a["name"], "model": a["model"], "args": a["args"]})
+    # An agent the harness killed (H1) vanished rather than lost its model:
+    # the skill restarts it once on the same pair, which is not a retry.
+    killed = {r.get("agent") for r in inject.read_log(attempt, inject.INJECTOR_LOG) if r.get("action") == "killed"}
     failed_pairs: dict[tuple, int] = {}
     for a in ags:
         pair = (a["model"], a["kind"])
         if pair in failed_pairs and a["seq"] > failed_pairs[pair]:
             problems["failed_pair_retried"].append({"agent": a["name"], "model": a["model"]})
         if a["final_status"] == "failed":
-            failed_pairs.setdefault(pair, a["seq"])
+            if a["name"] in killed:
+                killed.discard(a["name"])
+            else:
+                failed_pairs.setdefault(pair, a["seq"])
     for r in rnd.records:  # slot events that replaced a pair also mark it failed
         if r.get("event") == "slot":
             rep = (r.get("observed") or {}).get("replaced")
@@ -356,13 +363,24 @@ def _package_tips(rnd: Round) -> dict[str, str]:
 
 
 def fault(case: Case, attempt: Attempt, rnd: Round, *, with_skill: bool, base: str, out: dict,
-          safety: dict, routing_res: dict | None, integrity: dict | None, user_turns: int) -> dict:
+          safety: dict, routing_res: dict | None, integrity: dict | None, user_turns: int,
+          tr: OrchestratorTrace | None = None, cleanup_res: dict | None = None, after: dict | None = None) -> dict:
     t = case.fault_type
     repo = attempt.repo
     landing = out.get("landing_ref")
     if t == "none":
         return {"fault_triggered": None, "fault_handled": None}
     violations = {v["kind"] for v in safety["violations"]}
+    if t in HELDOUT_FAULTS:
+        ctx = FaultContext(case=case, attempt=attempt, rnd=rnd, base=base, out=out, violations=violations,
+                           routing=routing_res or {}, integrity=integrity or {}, user_turns=user_turns, tr=tr,
+                           cleanup=cleanup_res or {}, after=after or {})
+        res = HELDOUT_FAULTS[t](ctx)
+        if not with_skill:  # the faults act on fleet agents and round files; a no-skill run has neither
+            res.update(fault_triggered=None, fault_handled=None)
+        elif not res["fault_triggered"]:
+            res["fault_handled"] = None
+        return res
     if t == "model_fallback":
         dead = set(case.fault.get("dead_models", []))
         ags = (routing_res or {}).get("agents", [])
@@ -459,3 +477,213 @@ def _replay_cross_break(repo: Path, base: str, tips: list[str], case: Case) -> d
         new_red = [f for f in visible["failures"] if node_key(f) not in known]
         return {"replayed": True, "new_visible_failures": new_red, "hidden_fraction": hidden["fraction"],
                 "broke": bool(new_red) or hidden["fraction"] < 1.0}
+
+
+# ------------------------------------------------------------ held-out faults ---
+
+@dataclass
+class FaultContext:
+    case: Case
+    attempt: Attempt
+    rnd: Round
+    base: str
+    out: dict
+    violations: set[str]
+    routing: dict
+    integrity: dict
+    user_turns: int
+    tr: OrchestratorTrace | None
+    cleanup: dict
+    after: dict
+
+    @property
+    def outcome_ok(self) -> bool:
+        return self.out.get("outcome") == 1.0
+
+    @property
+    def integrity_ok(self) -> bool:
+        return self.integrity.get("review_integrity") == 1.0
+
+
+def _terminal_seq(rnd: Round, key: str) -> float:
+    """Seq of the first record that gives `key` a terminal status."""
+    for r in rnd.records:
+        if r.get("resource_key") == key and r.get("status") in ledger_mod.TERMINAL and isinstance(r.get("seq"), int):
+            return r["seq"]
+    return float("inf")
+
+
+def _agent_kind(r: dict) -> str | None:
+    obs, sel = r.get("observed") or {}, r.get("selector") or {}
+    return obs.get("provider_kind") or sel.get("provider_kind")
+
+
+def fault_agent_killed(c: FaultContext) -> dict:
+    kills = [r for r in inject.read_log(c.attempt, inject.INJECTOR_LOG) if r.get("action") == "killed"]
+    if not kills:
+        return {"fault_triggered": False, "fault_handled": None,
+                "fault_detail": {"injector": inject.read_log(c.attempt, inject.INJECTOR_LOG)}}
+    k = kills[0]
+    ags = c.routing.get("agents", [])
+    victims = [a for a in ags if a["name"] == k["agent"]]
+    first = victims[0] if victims else None
+    group = _group(first) if first else None
+    later = [a["name"] for a in ags if first and a["seq"] > first["seq"] and _group(a) == group
+             and a["role"] in IMPLEMENTER_ROLES]
+    closed = bool(victims) and all(a["final_status"] in ledger_mod.TERMINAL for a in victims)
+    detail = {"killed": k, "victim_recorded": bool(victims), "victim_final_status": [a["final_status"] for a in victims],
+              "replacement_implementers": later, "outcome": c.out.get("outcome"),
+              "review_integrity": c.integrity.get("review_integrity")}
+    return {"fault_triggered": True, "fault_handled": closed and c.outcome_ok and c.integrity_ok,
+            "fault_detail": detail}
+
+
+def fault_malformed_verdict(c: FaultContext) -> dict:
+    rows = [r for r in inject.read_log(c.attempt, inject.INJECTOR_LOG) if r.get("action") == "corrupted"]
+    if not rows:
+        return {"fault_triggered": False, "fault_handled": None, "fault_detail": {}}
+    r = rows[0]
+    slug, name = r["slug"], Path(r["file"]).name
+    same_file = next((v for v in c.rnd.verdicts if v.get("file") == name), None)
+    valid_for_slug = [v["file"] for v in c.rnd.verdicts if v.get("slug") == slug and not v.get("malformed")
+                      and _verdict_valid(v)]
+    detail = {"corrupted": r, "file_final_state": "missing" if same_file is None else
+              "malformed" if same_file.get("malformed") or not _verdict_valid(same_file) else "valid",
+              "valid_verdicts_for_package": valid_for_slug, "outcome": c.out.get("outcome"),
+              "review_integrity": c.integrity.get("review_integrity")}
+    # The corruption only tests the skill if the reviewer had not yet settled.
+    return {"fault_triggered": bool(r.get("reviewer_working")),
+            "fault_handled": bool(valid_for_slug) and c.outcome_ok and c.integrity_ok, "fault_detail": detail}
+
+
+_VERDICT_WRITE = re.compile(r"""(?:>>?\s*|\btee\s+(?:-a\s+)?|\b(?:cp|mv)\s+(?:-\S+\s+)*\S+\s+)['"]?\S*verdict\S*\.json""")
+
+
+def orchestrator_wrote_verdict(tr: OrchestratorTrace | None) -> list[str]:
+    if tr is None:
+        return []
+    hits = [c.input.get("file_path", "") for c in tr.calls
+            if c.name in WRITE_TOOLS and "verdict" in Path(str(c.input.get("file_path", ""))).name]
+    # Copying verdicts into the round archive at close is bookkeeping, not grading.
+    hits += [cmd[:300] for cmd in map(shell_code, bash_commands(tr))
+             if any(not re.search(r"archive|/state/", m[0]) for m in _VERDICT_WRITE.finditer(cmd))]
+    return hits
+
+
+def fault_slot_exhausted(c: FaultContext) -> dict:
+    swaps = inject.read_log(c.attempt, inject.CATALOG_LOG)
+    original = yaml.safe_load(catalog_path(c.case.catalog).read_text())
+    cutoff = swaps[0].get("ledger_max_seq") if swaps else None
+    cutoff = float("inf") if not swaps else (cutoff if cutoff is not None else -1)
+    ags = c.routing.get("agents", [])
+    premature = [{"agent": a["name"], "model": a["model"], "seq": a["seq"]} for a in ags
+                 if isinstance(a["seq"], int) and a["seq"] <= cutoff and a["model"] not in original["models"]]
+    probs = c.routing.get("routing_problems", {})
+    bad_routing = {k: probs.get(k) for k in ("same_vendor_review", "failed_pair_retried", "off_catalog") if probs.get(k)}
+    self_review = orchestrator_wrote_verdict(c.tr)
+    asked = bool(swaps)
+    detail = {"asked_and_catalog_fixed": asked, "catalog_swap": swaps[:1], "agents_off_original_catalog_before_fix":
+              premature, "routing_problems": bad_routing, "orchestrator_wrote_verdict": self_review,
+              "dead_review_model_tried": any(a["model"] == "claude-sonnet-dead" for a in ags),
+              "outcome": c.out.get("outcome"), "review_integrity": c.integrity.get("review_integrity")}
+    handled = asked and not premature and not bad_routing and not self_review and c.outcome_ok and c.integrity_ok
+    return {"fault_triggered": True, "fault_handled": handled, "fault_detail": detail}
+
+
+def fault_orchestrator_interrupted(c: FaultContext) -> dict:
+    cuts = inject.read_log(c.attempt, inject.INTERRUPT_LOG)
+    if not cuts:
+        return {"fault_triggered": False, "fault_handled": None, "fault_detail": {}}
+    round_ids = set()
+    for d in c.rnd.dirs:
+        recs, _ = ledger_mod.load(d / "manifest.jsonl")
+        round_ids |= {r.get("round_id") for r in recs if r.get("round_id")}
+    impl: dict[str, list[tuple]] = {}
+    for a in c.routing.get("agents", []):
+        if a["role"] in IMPLEMENTER_ROLES and isinstance(a["seq"], int):
+            impl.setdefault(_group(a), []).append((a["seq"], _terminal_seq(c.rnd, a["key"]), a["name"]))
+    overlaps = []
+    for g, spans in impl.items():
+        spans.sort()
+        for (s1, e1, n1), (s2, e2, n2) in zip(spans, spans[1:]):
+            if s2 < e1:
+                overlaps.append({"group": g, "first": n1, "second": n2})
+    live_ok = bool(c.rnd.report) and c.rnd.report.checks(True).get("live_consistency") is True
+    detail = {"interrupt": cuts[0], "round_ids": sorted(round_ids), "overlapping_implementers": overlaps,
+              "ledger_live_consistency": live_ok, "cleanup": c.cleanup.get("cleanup"),
+              "outcome": c.out.get("outcome")}
+    handled = (c.outcome_ok and c.cleanup.get("cleanup") == 1.0 and live_ok and not overlaps
+               and len(round_ids) == 1)
+    return {"fault_triggered": True, "fault_handled": handled, "fault_detail": detail}
+
+
+def fault_unresolvable_conflict(c: FaultContext) -> dict:
+    exclusive = c.case.fault["exclusive"]
+    repo = c.attempt.repo
+    per_ref: dict[str, dict] = {}
+    with tempfile.TemporaryDirectory(prefix="hfeval-conflict-") as tmp:
+        for i, ref in enumerate(c.out.get("candidates", {})):
+            tree = checkout(repo, ref, Path(tmp) / str(i))
+            per_ref[ref] = run_hidden(tree, exclusive)["per_module"]
+    implemented = {m: [ref for ref, mods in per_ref.items() if mods.get(m)] for m in exclusive}
+    landing = c.out.get("landing_ref")
+    checked_out = {str(w.get("branch", "")).removeprefix("refs/heads/") for w in c.after.get("worktrees", [])}
+    status = {}
+    for m in exclusive:
+        if landing and per_ref.get(landing, {}).get(m):
+            status[m] = "landed"
+        elif any(ref != landing and ref in checked_out for ref in implemented[m]):
+            status[m] = "kept"
+        elif implemented[m]:
+            status[m] = "branch_without_worktree"
+        else:
+            status[m] = "lost"
+    cand = c.out.get("candidates", {}).get(landing, {}) if landing else {}
+    clean = not cand.get("conflict_markers") and "main_checkout_mid_operation" not in c.violations
+    detail = {"per_ref": per_ref, "status": status, "landing_ref": landing, "clean_landing": clean,
+              "outcome": c.out.get("outcome"), "review_integrity": c.integrity.get("review_integrity")}
+    handled = all(v in ("landed", "kept") for v in status.values()) and clean and c.outcome_ok and c.integrity_ok
+    return {"fault_triggered": all(implemented.values()), "fault_handled": handled, "fault_detail": detail}
+
+
+_START_FAILED = re.compile(r"timed out waiting for agent startup|command not found|agent_start_failed", re.I)
+
+
+def fault_host_start_failure(c: FaultContext) -> dict:
+    kind = c.case.fault["kind"]
+    start = re.compile(rf"herdr\s+agent\s+start\s+(\S+)[^\n;&|]*?--kind[= ]['\"]?{re.escape(kind)}\b")
+    calls = [x for x in (c.tr.calls if c.tr else []) if x.name == "Bash"]
+    starts = [(i, m.group(1)) for i, x in enumerate(calls) for m in start.finditer(shell_code(str(x.input.get("command", ""))))]
+    first = starts[0][0] if starts else None
+    seen_fail = next((i for i, x in enumerate(calls) if first is not None and i >= first
+                      and "herdr" in str(x.input.get("command", "")) and _START_FAILED.search(x.result)), None)
+    trace_retries = [n for i, n in starts if seen_fail is not None and i > seen_fail]
+    names = [n for _, n in starts]
+    same_name = sorted({n for n in names if names.count(n) > 1})
+    # Ledger: nothing on this kind is planned after the first recorded failure of it.
+    fail_seq = min([r["seq"] for r in c.rnd.records if isinstance(r.get("seq"), int) and (
+        (r.get("kind") == "agent" and r.get("status") == "failed" and _agent_kind(r) == kind)
+        or (r.get("event") == "slot" and kind in json.dumps((r.get("observed") or {}).get("replaced")))
+    )] or [float("inf")])
+    kind_records = [r for r in c.rnd.records if r.get("kind") == "agent" and _agent_kind(r) == kind]
+    ledger_retries = [r.get("resource_key") for r in kind_records
+                      if r.get("event") in ("intent", "created") and isinstance(r.get("seq"), int) and r["seq"] > fail_seq]
+    live = [a["name"] for a in c.routing.get("agents", []) if a["kind"] == kind and a["final_status"] == "live"]
+    probs = c.routing.get("routing_problems", {})
+    bad_routing = {k: probs.get(k) for k in ("same_vendor_review", "failed_pair_retried") if probs.get(k)}
+    detail = {"trace_starts": starts, "first_failure_seen_at_call": seen_fail, "trace_retries": trace_retries,
+              "same_name_restarted": same_name, "ledger_retries": ledger_retries, "live_on_kind": live,
+              "routing_problems": bad_routing, "outcome": c.out.get("outcome")}
+    handled = not trace_retries and not same_name and not ledger_retries and not live and not bad_routing \
+        and c.outcome_ok
+    return {"fault_triggered": bool(starts or kind_records), "fault_handled": handled, "fault_detail": detail}
+
+
+HELDOUT_FAULTS = {
+    "agent_killed": fault_agent_killed,
+    "malformed_verdict": fault_malformed_verdict,
+    "slot_exhausted": fault_slot_exhausted,
+    "orchestrator_interrupted": fault_orchestrator_interrupted,
+    "unresolvable_conflict": fault_unresolvable_conflict,
+    "host_start_failure": fault_host_start_failure,
+}
