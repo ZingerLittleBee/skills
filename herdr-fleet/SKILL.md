@@ -28,7 +28,7 @@ and what it hands back:
 | Role | Slot | Writes | Spawns | Hands back |
 |---|---|---|---|---|
 | Orchestrator | the user's own session | manifest, briefs, check scripts | every fleet agent | the final report |
-| Implementer | `smol` / `default` / `slow` / `hard` by package difficulty; `ui` for UI packages; `slow` for merge-suite fixes | its own worktree, or the main checkout in the merge tab | nothing | commits plus a summary file |
+| Implementer | `smol` / `default` / `slow` / `hard` by package difficulty; `ui` for UI packages; `slow` for merge-suite fixes | its own worktree, or the merge worktree (step 9) | nothing | commits plus a summary file |
 | Reviewer | `review`; an adjudicator tries `slow` first (step 7) | nothing (read-only) | nothing | a structured verdict file |
 | Scout | `smol` | nothing (read-only) | nothing | a structured report file: codebase survey (step 3) or triage of a log, manifest or listing (step 4) |
 
@@ -293,9 +293,9 @@ files, so `herdr agent list` reads as a status board. The round-slug
 names the survey scouts `<round-slug>-scout-<n>`, the triage scout
 `<round-slug>-triage` (step 4), the suite-fix pair
 `<round-slug>-suite-fix` and `<round-slug>-suite-review` (step 9),
-the round directory, the merge tab and, when the round needs a fresh
-merge target, that branch (below). Agent names are server-global and
-branches already live in the repo: check `herdr agent list` and
+the round directory, the merge tab, and the merge target branch
+`feat/<round-slug>` with its merge worktree (below). Agent names are
+server-global and branches already live in the repo: check `herdr agent list` and
 `git -C <main-repo-path> branch --list "feat/*"` for collisions now,
 the round-slug branch included, and pick a different slug rather than
 debug ambiguous targets mid-round.
@@ -373,7 +373,7 @@ script writes is one record:
   "event": "intent | created | state | slot",
   "resource_key": "package/<slug>/worktree",
   "kind": "worktree | workspace | tab | pane | agent | branch | dir | slot",
-  "role": "package-container | package-implementer | package-reviewer | check-pane | review-pane | scout-container | scout | merge-container | merge-implementer | merge-implementer-pane | merge-reviewer | merge-reviewer-pane | merge-check-pane | package-branch | round-dir | round-workspace | merge-target | round-archive | container-root-pane | slot",
+  "role": "package-container | package-implementer | package-reviewer | check-pane | review-pane | scout-container | scout | merge-container | merge-implementer | merge-implementer-pane | merge-reviewer | merge-reviewer-pane | merge-check-pane | merge-worktree | package-branch | round-dir | round-workspace | merge-target | round-archive | container-root-pane | slot",
   "parent_key": "<logical parent resource_key or null>",
   "cleanup_policy": "remove-when-merged | close-aux | close-container | delete-on-success | report-only",
   "selector": {},
@@ -429,12 +429,15 @@ current branch:
   workspace is closed in step 10; its initial tab and root pane stay
   untouched, the round only adds tabs to it. A workspace inherited
   from `$HERDR_WORKSPACE_ID` gets no event and is never closed.
-- If the current branch is shared and long-lived (the default branch,
-  `develop`, `release/*`), or HEAD is detached (`--abbrev-ref` prints
-  the literal `HEAD`), the round must not land on it directly: the
-  merge target is a new local branch `feat/<round-slug>` created from
-  the base sha at merge time (step 9). Otherwise the current branch
-  itself is the merge target. Borderline cases are your judgment call.
+- The merge target is always a new local branch `feat/<round-slug>`,
+  created from the base sha in a merge worktree of its own at merge
+  time (step 9). The main checkout is the user's: the round never
+  checks out, switches, merges, commits or resets there, so the user
+  can keep working in it all round. When the current branch is a
+  feature branch of the user's rather than a shared long-lived one
+  (the default branch, `develop`, `release/*`) or a detached HEAD, the
+  final report (step 10) gives the command that fast-forwards it to
+  the result; running it stays with the user.
 
 **Understand the request** the way you would in any session: read
 the user's description, the repo's convention files, the file tree,
@@ -481,6 +484,18 @@ than reading the code yourself. When a report contradicts the user's
 request (the feature already exists, the named module is gone, the
 task is far larger than described), put the contradiction in the
 plan table below and let the user decide; do not silently re-scope.
+
+Before slicing, compare the requested tasks' acceptance criteria with
+each other, not only with the code: two tasks that set the same
+behavior to different values (two different default orders, two
+formats for one output, one task removing what another extends)
+cannot both land, and building both only to meet them at the merge
+wastes a package and a conflict. Package neither of them. Put the
+conflict in the plan table with the choices (one, the other, or both
+behind a switch, and which is the default) and let the user decide;
+the other tasks go ahead. In an unattended round, leave both out and
+put the choice in the final report (step 10).
+
 Survey scouts are shut and their tabs closed (step 9 shutdown
 procedure) right after the plan is confirmed, and also when the user
 rejects the plan, which ends the round at step 10. The triage scout
@@ -526,7 +541,13 @@ unattended): packages, branch names, merge order, merge target, slot
 per package (a `hard` package always with the reason it is beyond
 `slow`, since that slot spends the most expensive models; unattended
 runs never assign `hard` on their own), the active pair per slot from
-step 2, any scout contradictions, and those worktree decisions. The
+step 2, any scout contradictions, and those worktree decisions. Say
+in the plan that CLIs will ask to trust each directory the round
+creates (package worktrees, the merge worktree) and that the round
+accepts those folder-only trusts, which the CLIs keep in their
+user-level config; the confirmation, or an instruction to run
+unattended, is the authority for that and for nothing wider (step 6,
+trust dialogs). The
 user may override slots here ("this round, codex only", "this round,
 `slow` runs on gpt-6-astra-xhigh only"): apply the override by filtering the slot's
 models or by replacing its list with other catalog models, never by
@@ -901,6 +922,21 @@ Known traps and how to handle them:
   the reply, resume with a `herdr agent list` sweep. Do not answer on
   the user's behalf, and do not hold the question for hours behind
   another wait.
+- **Trust dialogs.** A CLI started in a directory it has not seen
+  (claude, codex and others) may stop at a folder-trust dialog before
+  its first turn, and some then ask about hooks or other additions
+  they found. Trusting the exact directory the agent was started in,
+  when the round created it (a package worktree, the merge worktree)
+  or it is the main repo, is covered by the plan confirmation (step
+  3): choose the option that trusts that directory only, never a
+  parent directory or every directory. Nothing else such a dialog
+  offers is yours to grant: approving a hook, an MCP server, a tool
+  permission or a settings change is never done on the user's behalf.
+  Choose the option that declines or skips it for this session; if
+  the agent cannot run without it, it is a user decision (the
+  `blocked` rule above). Record each trust accepted and each item
+  declined on the status board, and list them in the final report
+  (step 10).
 - **Alternate-screen output is unrecoverable.** Agents that render on
   the terminal's alternate screen never feed scrolled-off rows into
   herdr's scrollback, so raising `--lines` cannot recover a long
@@ -1198,6 +1234,28 @@ The round ends on a local branch; nothing gets pushed. Publishing
 every non-dropped package has passed review and its quick checks,
 merge only those packages. If none remain, skip to step 10.
 
+All merge-phase work happens in a **merge worktree**, never in the
+main checkout, which stays the user's all round (step 3). Its path is
+`feat-<round-slug>` inside the directory holding the package
+worktrees (the parent of any recorded package worktree path), written
+out as a literal absolute path; it must not exist yet. Write-ahead the
+worktree (`round/merge-worktree`, `kind` `worktree`, `role`
+`merge-worktree`, `cleanup_policy` `remove-when-merged`, the path in
+`selector`) and the branch (`round/merge-target`, `kind` `branch`,
+`role` `merge-target`, `cleanup_policy` `report-only`), then create
+both in one command:
+
+```bash
+git -C <main-repo-path> worktree add -b feat/<round-slug> <merge-worktree-path> <base-sha>
+```
+
+Append `created` for both (the path on the worktree, the ref and base
+sha on the branch). An "already exists" refusal of either means the
+step 3 collision check was dodged: go to step 10 and surface it.
+Prepare the merge worktree the way step 4 prepares a package worktree,
+with a `prep` check script in the merge check pane below, before the
+first merge.
+
 Create one merge tab for all merge-phase work, bound to the
 orchestrator workspace id recorded in step 3; `--workspace` is
 required, because without it `herdr tab create` follows the globally
@@ -1206,11 +1264,11 @@ Write-ahead the tab (`kind` `tab`, `role` `merge-container`) and its
 root pane (`kind` `pane`, `role` `container-root-pane`):
 
 ```bash
-herdr tab create --workspace <orchestrator-workspace-id> --cwd <main-repo-path> --label <round-slug>-merge --no-focus
+herdr tab create --workspace <orchestrator-workspace-id> --cwd <merge-worktree-path> --label <round-slug>-merge --no-focus
 ```
 
 Record the merge tab id and its root pane id. Then split a **merge
-check pane** off that root pane with cwd `<main-repo-path>` and
+check pane** off that root pane with cwd `<merge-worktree-path>` and
 write-ahead it (`role` `merge-check-pane`, `kind` `pane`,
 `cleanup_policy` `close-aux`); every suite run of the merge phase is a
 check script in that pane. Every merge implementer and merge reviewer
@@ -1218,8 +1276,8 @@ splits inside this tab too; never use `--current` here, and never
 close this tab's root pane, since `herdr tab close` reclaims it.
 
 The two roles used here are the same Implementer and Reviewer roles as
-in steps 5 and 7, started fresh in merge-tab panes with the main
-checkout as cwd. A conflict-merge implementer (`<slug>-merge`, item
+in steps 5 and 7, started fresh in merge-tab panes with the merge
+worktree as cwd. A conflict-merge implementer (`<slug>-merge`, item
 2) runs on the slot of the package whose merge it resolves (`default`
 at least, never `smol`); the suite-fix implementer
 (`<round-slug>-suite-fix`, item 3) runs on `slow`, since a failure
@@ -1238,43 +1296,37 @@ counted like step 7's: each rejecting merge verdict and each `FAIL`
 of the suite after a fix increments it, and a third goes to the user
 with the report paths.
 
-1. Re-check the main repo: the tree still clean
-   (`git -C <main-repo-path> status --porcelain`) and HEAD still on
-   the branch recorded in step 3
-   (`git -C <main-repo-path> rev-parse --abbrev-ref HEAD`), or, when
-   the recorded branch is the literal `HEAD` of a detached checkout,
-   `git -C <main-repo-path> rev-parse HEAD` still equal to the base
-   sha, since `--abbrev-ref` prints `HEAD` for any detached commit
-   and would pass a moved checkout; hours may
-   have passed, and uncommitted edits or a mid-round branch switch
-   would ride into the merges; surface a mismatch and go to step 10
-   instead of working around it. If the recorded branch itself is the
-   merge target, require
-   `git -C <main-repo-path> merge-base --is-ancestor <base-sha> HEAD`;
-   a failure means the branch was reset or rewritten, so go to step
-   10 instead of merging packages based on stale history. A branch
-   that moved forward while retaining the base may still merge;
-   report it. Then check out the merge target: if step 3 chose a
-   fresh target, write-ahead the branch (`kind` `branch`, `role`
-   `merge-target`, `cleanup_policy` `report-only`) and create it now
-   with `git -C <main-repo-path> switch -c feat/<round-slug> <base-sha>`;
-   an "already exists" refusal means the step-3 collision check was
-   dodged, so go to step 10 and surface it. Otherwise stay on the
-   recorded branch.
+1. Check the merge worktree: its tree clean
+   (`git -C <merge-worktree-path> status --porcelain`) and
+   `git -C <merge-worktree-path> rev-parse HEAD` equal to the base sha
+   before the first merge, and equal to the last sha you recorded on
+   it before every later one; anything else means something else
+   wrote there, so go to step 10 and surface it. Whatever the user
+   does in the main checkout meanwhile is theirs and is not checked
+   here; note in the report only whether their branch moved past the
+   base (`git -C <main-repo-path> rev-parse <recorded-branch>`).
 2. Merge the accepted package branches in the agreed order, one at a
    time. Immediately before each merge, require the package worktree
    to be clean and `git -C <worktree-path> rev-parse feat/<slug>` to
    equal its `accepted_sha`, record
-   `pre_merge_sha=$(git -C <main-repo-path> rev-parse HEAD)`, then run
-   `git -C <main-repo-path> merge --no-ff feat/<slug>`. A clean merge
-   is bookkeeping and yours to run; it gets no review. A conflicted
-   merge is implementation in the main checkout, not the package
-   worktree. Split a pane off the merge tab's root pane; write-ahead
-   the pane (`role` `merge-implementer-pane`) and the agent (`role`
+   `pre_merge_sha=$(git -C <merge-worktree-path> rev-parse HEAD)`, then
+   run
+   `git -C <merge-worktree-path> merge --no-ff -m "<message>" feat/<slug>`
+   with the message final from the start: a subject in the repo's
+   commit convention (with Conventional Commits,
+   `chore: merge feat/<slug> into feat/<round-slug>`). The round never
+   rewrites a commit it has made: no `reset`, `rebase`, `commit
+   --amend` or force-moved ref, in the merge worktree or anywhere
+   else. A merge that should have looked different is reported, not
+   redone; `merge --abort` on a conflicted merge (below) is the only
+   undo. A clean merge is bookkeeping and yours to run; it gets no
+   review. A conflicted merge is implementation in the merge worktree,
+   not the package worktree. Split a pane off the merge tab's root
+   pane; write-ahead the pane (`role` `merge-implementer-pane`) and the agent (`role`
    `merge-implementer`):
 
    ```bash
-   herdr pane split <merge-root-pane-id> --direction down --cwd <main-repo-path> --no-focus
+   herdr pane split <merge-root-pane-id> --direction down --cwd <merge-worktree-path> --no-focus
    herdr agent start <slug>-merge --kind <kind> --pane <new-pane-id> -- <provider-args>
    ```
 
@@ -1283,9 +1335,9 @@ with the report paths.
    Do not reuse the worktree-rooted
    implementer: a path written in a brief does not change a live
    agent's cwd, and the conflict index (`MERGE_HEAD`) exists only in
-   the main checkout. Exactly one agent may write the main checkout at
-   a time. Once it settles, require a clean committed merge, record
-   `candidate_sha=$(git -C <main-repo-path> rev-parse HEAD)`, and
+   the merge worktree. Exactly one agent may write the merge worktree
+   at a time. Once it settles, require a clean committed merge, record
+   `candidate_sha=$(git -C <merge-worktree-path> rev-parse HEAD)`, and
    dispatch `<slug>-merge-review` in another pane split the same way
    off the merge tab's root (write-ahead `role` `merge-reviewer-pane`
    / `merge-reviewer`) to
@@ -1297,8 +1349,8 @@ with the report paths.
    cannot resolve (the implementer settles with `QUESTION` or is
    blocked on a user decision, a rejecting verdict spends the merge
    budget, or a merge reviewer has no model left) must not leave the
-   checkout mid-merge: shut the pair, then
-   `git -C <main-repo-path> merge --abort`, require HEAD to equal
+   merge worktree mid-merge: shut the pair, then
+   `git -C <merge-worktree-path> merge --abort`, require HEAD to equal
    `pre_merge_sha` and the tree to be clean, append a `state` event
    on `package/<slug>/branch` with `status` `retained` and the
    conflicting files as detail, and go to step 10, where the report
@@ -1313,19 +1365,19 @@ with the report paths.
    and test commands from the scout report (step 3); it changes no
    code and makes no commits. The suite binds to its sha exactly as a
    quick check does (step 8): before running and again after the
-   marker appears, require `git -C <main-repo-path> status
-   --porcelain` to be empty and both `git -C <main-repo-path>
-   rev-parse HEAD` and `git -C <main-repo-path> rev-parse
-   <merge-target>` to equal the sha the script names. While the suite
-   runs, nothing else touches the main checkout: no merge implementer
-   is live and you run no git there. When the marker appears, run the
-   post-run binding, then read the report's first line; three
+   marker appears, require `git -C <merge-worktree-path> status
+   --porcelain` to be empty and both `git -C <merge-worktree-path>
+   rev-parse HEAD` and `git -C <merge-worktree-path> rev-parse
+   feat/<round-slug>` to equal the sha the script names. While the
+   suite runs, nothing else touches the merge worktree: no merge
+   implementer is live and you run no git there. When the marker
+   appears, run the post-run binding, then read the report's first line; three
    outcomes follow.
    `PASS` with a clean post-run binding is a green suite.
    `PASS` with a dirty tree is not a pass: a build that mutates
    tracked files has produced an unverified tree. This path bypasses
    the triage scout, since the log shows nothing wrong: write
-   `git -C <main-repo-path> status --porcelain` to
+   `git -C <merge-worktree-path> status --porcelain` to
    `<recorded-round-dir>/<round-slug>-suite-<sha>-<attempt>-dirty.md`
    and hand that path to the suite-fix implementer below, which
    decides whether those files are generated output to commit or a
@@ -1335,13 +1387,13 @@ with the report paths.
    path go to the suite-fix implementer below.
    The suite-fix implementer is `<round-slug>-suite-fix`, on the
    `slow` slot's active pair, split and written ahead as in item 2
-   with the roles named above, rooted in the main checkout; the pairs
+   with the roles named above, rooted in the merge worktree; the pairs
    of item 2 are already shut by now, so it is always a fresh start.
-   Record `pre_fix_sha=$(git -C <main-repo-path> rev-parse HEAD)`,
+   Record `pre_fix_sha=$(git -C <merge-worktree-path> rev-parse HEAD)`,
    brief it by file-drop with the paths above and the summary path
    of step 5, and once it settles require a clean tree and a new
    commit, record
-   `candidate_sha=$(git -C <main-repo-path> rev-parse HEAD)`, then
+   `candidate_sha=$(git -C <merge-worktree-path> rev-parse HEAD)`, then
    dispatch `<round-slug>-suite-review` (as in item 2) to grade the
    exact `git diff <pre_fix_sha> <candidate_sha>` read-only. Accept
    only a verdict naming that candidate sha with no blocking finding
@@ -1353,10 +1405,10 @@ with the report paths.
    failing report, leave the merge-target red-suite fix state
    untouched, and go to step 10.
 
-Throughout, the main checkout changes hands whole: exactly one agent
+Throughout, the merge worktree changes hands whole: exactly one agent
 or one check script works in it at a time, and while one does, run no
 git there yourself; the no-shared-checkout rule from the intro,
-applied to you.
+applied to you. The main checkout is never one of those hands.
 
 **Then shut each finished agent down promptly**, once it is no longer
 needed, including each merge pair before the next merge or suite
@@ -1401,7 +1453,7 @@ step 9 procedure first, the triage scout excepted (it is the last to
 go, below), then close still-live survey-scout tabs and the merge
 tab with `herdr tab close <tab-id>`. Do not wait for a green suite to
 reclaim a package that is already merged: its commits are on the
-merge target, and step 9.3 fixes in the main checkout, so that
+merge target, and step 9.3 fixes in the merge worktree, so that
 worktree is not recovery context. Save failing suite output first;
 never touch the merge target or its red-suite fix state.
 
@@ -1429,7 +1481,7 @@ comparisons, `herdr pane process-info`) yourself on that one
 resource; a scout's row never substitutes for it. Once the table is
 read and every disposition below is decided, the triage scout is done
 for the round: shut it and close its tab with the step 9 procedure
-before item 3, whose workspace close requires every round tab gone.
+before item 4, whose workspace close requires every round tab gone.
 
 1. Per package, remove the worktree only when all of these hold:
    `git -C <worktree-path> status --porcelain` is empty, the branch
@@ -1451,7 +1503,18 @@ before item 3, whose workspace close requires every round tab gone.
    parent directory and do not `git worktree prune`; at most
    `git -C <main-repo-path> worktree prune --dry-run --verbose` and
    report the findings.
-2. Delete the merged package branches, worktrees first, branches
+2. Remove the merge worktree (`role` `merge-worktree`) only when all
+   of these hold: `git -C <merge-worktree-path> status --porcelain`
+   is empty, its HEAD and `feat/<round-slug>` both equal the last sha
+   you recorded on the merge target, the suite of step 9.3 passed on
+   that sha, and every merge-phase agent is gone and the merge tab is
+   closed. Then
+   `git -C <main-repo-path> worktree remove <merge-worktree-path>`,
+   never with `--force`; git's own refusal is a reason to retain, not
+   to retry harder. A red suite, a dirty tree or an unexpected sha
+   retains it and the report names the path. Either way the branch
+   `feat/<round-slug>` stays: it is the round's output.
+3. Delete the merged package branches, worktrees first, branches
    second: git refuses to delete a branch that is still checked out in
    a worktree. Every merged tip is reachable from the target, so
    `git -C <main-repo-path> branch -d feat/<slug>` succeeds; read a
@@ -1459,9 +1522,9 @@ before item 3, whose workspace close requires every round tab gone.
    worktree behind and says nothing about merge state, while `not
    fully merged` is evidence the package never actually merged. Either
    way investigate; `-D` answers neither.
-3. Account for the rest of this round's residue from the manifest:
-   round directory, package branches, any merge-target branch this
-   round created, the scout tabs, the merge tab and its root pane,
+4. Account for the rest of this round's residue from the manifest:
+   round directory, package branches, the merge-target branch, the
+   merge worktree, the scout tabs, the merge tab and its root pane,
    and the orchestrator workspace if this round created it (package
    workspaces went with their worktrees in item 1 and are never
    closed on their own). A `round-workspace` event
@@ -1473,13 +1536,22 @@ before item 3, whose workspace close requires every round tab gone.
    place; it is the round's output. Append a `state` event per
    disposition for every resource except the round directory, while
    the manifest still exists.
-4. Final report: the merge target branch, then per package: branch,
+5. Final report: the merge target branch, and when the main
+   checkout's recorded branch is a feature branch of the user's (step
+   3), the command that brings it up to the result, for the user to
+   run:
+   `git -C <main-repo-path> merge --ff-only feat/<round-slug>` (it
+   refuses if they have committed there since the base; say so). Then
+   per package: branch,
    slot and the model and CLI that actually did it (with any fallback
    or restart noted), correction cycles used, quick-check evidence,
    and the reviewer's `assumption_check` status with the assumption
    in one line; plus anything dropped, a per-slot summary of which
    pairs were used and which failed, any integration the round
-   installed in step 2 (kept), and the merge budget used. Build
+   installed in step 2 (kept), the merge budget used, every trust
+   dialog answered and every hook, MCP server or permission declined
+   (step 6), and any contradictory tasks left for the user with the
+   choices (step 3). Build
    every item except the round directory from the still-live manifest
    as one of `removed`, `retained(<reason>)`, or
    `cleanup_failed(<error>)`. Archive the round directory before you
@@ -1569,6 +1641,10 @@ retried, a reviewer that writes malformed verdicts is replaced for
 its package rather than retired, and a package restarts a vanished
 agent at most once; a conflicted merge the round cannot resolve is
 aborted, never left half-done; the
+main checkout is the user's (the round only reads there and adds or
+removes worktrees and branches), all merging happens in the merge
+worktree, and no commit the round made is ever rewritten (no reset,
+rebase, amend or force-moved ref); the
 round ends on a local branch and publishing stays with the user; a
 worktree holding dirty or unmerged work stays in place; a finished
 agent session closes before its package or merge task is considered
