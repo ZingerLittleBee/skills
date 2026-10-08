@@ -164,8 +164,11 @@ The prompt it sends points at the brief and at
 this worktree, write tests but run no heavy build, commit with the
 repo's convention and no trailers, never push or rewrite, and end every
 turn with a summary file whose first line is `DONE` or `QUESTION`. The
-brief carries what only you know, self-contained and referencing code
-by path:
+brief carries what only you know, self-contained and referencing specs
+and code by path. The spec stays the authority for behaviour: name its
+section and add only what it leaves open (scope cuts, decisions), since
+a restated rule list becomes the implementer's spec and drops whatever
+it omits.
 
 - scope and acceptance criteria;
 - the convention files, glossary and specs to read first;
