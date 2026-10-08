@@ -204,7 +204,7 @@ Read each event and act; then `F wait` again:
 | a screen naming a quota, rate limit, unknown model, expired login, HTTP 401/429/5xx, or a failed start | `F fallback <name> --reason '<what the screen says>'`; add `--cli` when the CLI itself is at fault (login, subscription) rather than one model. `no model left` goes to the user; once they fix the catalog, `F resolve`, then the same fallback again. |
 | `<name> VANISHED` | `F restart <name>`. A second vanish is a dead pair: fallback. |
 | `<reviewer> … verdict malformed: <reason>` or `missing` | `F prompt <reviewer> --text 'Rewrite <verdict-path>: <reason>'`. A second malformed verdict from it: fallback. |
-| `both gates in, … -> send-back` | `F send-back <pkg>` (it writes the feedback file and counts the cycle), or drop. |
+| `both gates in, … -> send-back` | `F send-back <pkg> [--note '<decision or scope change>']` (it writes the feedback file and counts the cycle), or drop. |
 | `check <pkg> prep … FAIL` with a log tail | A transient failure (network, cache lock) is `F recheck <pkg> --prep`; a wrong command is `F recheck <pkg> --prep '<fixed>'`; a repo that does not build at the base goes to the user. |
 | `check <pkg> check … FAIL` | Part of the gate result: the send-back carries the report path. A transient failure is `F recheck <pkg>`. |
 | `timeout: still working` | Wait again. An agent stuck `working` across several waits: `herdr agent read <name> --source visible`, then decide. |
