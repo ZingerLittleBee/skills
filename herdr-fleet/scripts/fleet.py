@@ -1214,6 +1214,7 @@ def cmd_drop(rnd: Round, a) -> None:
 # ------------------------------------------------------------------ wait ---
 
 UNPICKED_AFTER = 75  # seconds a delivered prompt may sit unread before wait reports it
+UNKNOWN_AFTER = 15  # seconds an agent may report no state before wait shows its screen
 
 
 def _summary(ag: dict) -> tuple[str, str]:
@@ -1267,6 +1268,12 @@ def _poll(rnd: Round) -> tuple[list[str], list[str], bool]:
                 events.append(f"{name} VANISHED ({ag['model']} via {ag['kind']}): restart {name}")
                 continue
             s, seq = cur.get("agent_status"), cur.get("state_change_seq")
+            if s in SETTLED or s in ("working", "blocked"):
+                ag.pop("unknown_since", None)
+            elif now - ag.setdefault("unknown_since", now) >= UNKNOWN_AFTER:
+                # herdr reads no state while a CLI sits on a screen its integration
+                # does not cover (codex's hooks dialog): surface it as blocked.
+                s = "blocked"
             if ag.get("pending") and s != "blocked":
                 if s in SETTLED and not _prep_busy(st, ag["package"]):
                     _deliver(ag, cur, ag["pending"])
