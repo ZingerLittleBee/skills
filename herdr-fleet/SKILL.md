@@ -168,7 +168,8 @@ brief carries what only you know, self-contained and referencing specs
 and code by path. The spec stays the authority for behaviour: name its
 section and add only what it leaves open (scope cuts, decisions), since
 a restated rule list becomes the implementer's spec and drops whatever
-it omits.
+it omits. A scope cut removes a whole feature; every rule of the section
+the package implements still holds, its validation and errors included.
 
 - scope and acceptance criteria;
 - the convention files, glossary and specs to read first;
