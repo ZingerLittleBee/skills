@@ -95,9 +95,12 @@ def herdr_ok(*args: str, timeout: float = 120) -> dict:
     return out.get("result", {})
 
 
+def agents_listed() -> list[dict]:
+    return herdr("agent", "list").get("result", {}).get("agents", [])
+
+
 def agents_live() -> dict[str, dict]:
-    res = herdr("agent", "list").get("result", {})
-    return {a["name"]: a for a in res.get("agents", []) if a.get("name")}
+    return {a["name"]: a for a in agents_listed() if a.get("name")}
 
 
 def screen(target: str, lines: int = 15) -> str:
@@ -1243,13 +1246,21 @@ def _event_text(rnd: Round, st: dict, ag: dict, status: str) -> tuple[str, str |
 
 def _poll(rnd: Round) -> tuple[list[str], list[str], bool]:
     events, submits, in_flight = [], [], False
-    live = agents_live()
+    listed = agents_listed()
+    live = {a["name"]: a for a in listed if a.get("name")}
+    unnamed = {a.get("pane_id"): a for a in listed if not a.get("name")}
     now = time.time()
     with rnd.state() as st:
         for name, ag in st["agents"].items():
             if ag["status"] != "live":
                 continue
             cur = live.get(name)
+            orphan = unnamed.get(ag["pane"])
+            if not cur and orphan and orphan.get("agent") in (ag["kind"], KINDS.get(ag["kind"], ("", ""))[1]):
+                # herdr can drop a started agent's name (seen with codex behind its
+                # hooks dialog) while the CLI keeps running in the pane: name it again.
+                if "error" not in herdr("agent", "rename", ag["pane"], name):
+                    cur = unnamed.pop(ag["pane"])
             if not cur:
                 ag["status"] = "vanished"
                 rnd.log("state", f"agent/{name}", status="failed", detail="vanished")
