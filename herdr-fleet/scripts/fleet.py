@@ -1270,10 +1270,15 @@ def _poll(rnd: Round) -> tuple[list[str], list[str], bool]:
             s, seq = cur.get("agent_status"), cur.get("state_change_seq")
             if s in SETTLED or s in ("working", "blocked"):
                 ag.pop("unknown_since", None)
-            elif now - ag.setdefault("unknown_since", now) >= UNKNOWN_AFTER:
+            else:
                 # herdr reads no state while a CLI sits on a screen its integration
-                # does not cover (codex's hooks dialog): surface it as blocked.
-                s = "blocked"
+                # does not cover (codex's hooks dialog): show that screen, keep the
+                # agent in flight, and show it again only if the state stays unknown.
+                if now - ag.setdefault("unknown_since", now) >= UNKNOWN_AFTER:
+                    ag["unknown_since"] = now + 3 * UNKNOWN_AFTER
+                    events.append(f"{name} BLOCKED ({ag['model']} via {ag['kind']}), no herdr state:\n{screen(name)}")
+                in_flight = True
+                continue
             if ag.get("pending") and s != "blocked":
                 if s in SETTLED and not _prep_busy(st, ag["package"]):
                     _deliver(ag, cur, ag["pending"])
