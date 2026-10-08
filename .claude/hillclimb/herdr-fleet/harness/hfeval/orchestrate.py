@@ -50,6 +50,21 @@ def orchestrator_env(attempt: Attempt, session: Session) -> dict[str, str]:
     }
 
 
+def _round_closed(d: Path) -> bool:
+    m = d / "manifest.jsonl"
+    if not m.exists():
+        return True
+    for line in m.read_text().splitlines():
+        try:
+            r = json.loads(line)
+        except json.JSONDecodeError:
+            continue
+        if r.get("resource_key") == "round/dir" and r.get("event") == "state":
+            return True
+    # The previous layout archived a round only at its very end.
+    return not (d / "state.json").exists()
+
+
 def _round_open(attempt: Attempt, session: Session, with_skill: bool, final_text: str) -> bool:
     agents = session.call("agent", "list").get("result", {}).get("agents", [])
     if agents:
@@ -61,7 +76,11 @@ def _round_open(attempt: Attempt, session: Session, with_skill: bool, final_text
     archives = list((attempt.state / "herdr-fleet").glob("*")) if (attempt.state / "herdr-fleet").exists() else []
     seeded = set(attempt.meta().get("seeds", {}).get("round_dirs", []))
     live_round_dirs = [d for d in round_dirs if str(d) not in seeded]
-    if archives:
+    # A round directory kept under the state root is closed once its ledger
+    # records a disposition for round/dir; until then it is the live round.
+    open_in_state = [d for d in archives if not _round_closed(d)]
+    live_round_dirs += open_in_state
+    if archives and not open_in_state:
         return False
     return bool(live_round_dirs) or asks
 

@@ -102,7 +102,8 @@ def kill_agent(attempt: Attempt, session: Session, spec: dict, stop: threading.E
 def corrupt_verdict(attempt: Attempt, session: Session, spec: dict, stop: threading.Event) -> None:
     sizes: dict[Path, int] = {}
     while not stop.wait(spec.get("poll_s", 0.1)):
-        for f in sorted(attempt.tmp.glob("herdr-fleet-*/*verdict*.json")):
+        found = [*attempt.tmp.glob("herdr-fleet-*/*verdict*.json"), *attempt.state.glob("herdr-fleet/*/*verdict*.json")]
+        for f in sorted(found):
             try:
                 data = f.read_bytes()
             except OSError:

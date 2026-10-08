@@ -114,6 +114,10 @@ def agents(rnd: Round) -> list[dict]:
 def _group(agent: dict) -> str:
     """Package/merge/suite group an agent belongs to."""
     key = agent.get("parent") or agent.get("key") or ""
+    name = agent.get("name") or ""
+    if key.startswith("round/merge"):
+        # One merge worktree hosts several implementer/reviewer pairs; group by pair.
+        return "merge:" + re.sub(r"-(review|merge-review|merge|suite-fix|suite-review|adjudicate)$", "", name)
     m = re.match(r"(package/[^/]+|merge|round/suite|suite)", key)
     if m:
         return m.group(1)

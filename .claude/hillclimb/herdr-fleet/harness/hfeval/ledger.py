@@ -166,7 +166,9 @@ def validate(round_dir_or_archive: Path, archive_root: Path | None = None) -> Le
 
 def _check_archive(rep: LedgerReport, records: list[dict], here: Path, archive_root: Path | None) -> None:
     arch = [r for r in records if r.get("resource_key") == "round/archive" or r.get("role") == "round-archive"]
-    if not any(r.get("event") == "created" for r in arch):
+    # A round directory created under the archive root is its own archive.
+    in_place = archive_root is not None and here.resolve().parent == archive_root.resolve()
+    if not in_place and not any(r.get("event") == "created" for r in arch):
         rep.archive_problems.append("no created event for round/archive")
     if archive_root is None:
         return
