@@ -132,6 +132,20 @@ usage is not available and is listed as such.
   history rewrite and final merge messages, contradictory requests deferred to
   the user, trust dialogs limited to folder trust). The held-out rows are the
   final acceptance check and are not used to choose between variants.
+- `herdr-fleet/v3`: the skill slimmed to decisions around `scripts/fleet.py`
+  (round mechanics in one command each, round state kept under the state
+  root). Rep 0 ran across the fix commits made during the run: F1 on
+  `a32ba51`; F2a-F3 on `b8d7e40` (repeatable `--override`, no false pickup
+  alarm); F4 and N1 on `dde60c2` (re-attach an agent whose herdr name was
+  dropped); N2 and R1 on `38ceac6` (a stateless agent shown as blocked);
+  R2 and rep 1 of F2a, F3 and N1 on `f9e5ae9`; F2a rep 2 on `3ab4bcb`;
+  F2a reps 3-4 on `5c831f6`, the final revision. Each attempt copies the
+  working tree at its start (snapshot-before mtime). F2a reps 1-2 failed
+  `thousands` (`12.345` accepted): the brief relaxed a rule of the SPEC
+  section in scope, fixed by `5c831f6`. F2a reps 0, 3 and 4 are
+  inconclusive (`fault_not_triggered`): the brief already required
+  accounting negatives, so the rigged reviewer had nothing to reject;
+  their outcome and hidden fraction are 1.0.
 - `herdr-fleet-heldout`: the held-out acceptance set H1-H6 (`harness/heldout/`), see below. Never used for iteration choices.
 
 ## Pilot history
