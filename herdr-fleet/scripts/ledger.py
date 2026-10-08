@@ -202,6 +202,38 @@ def parse(argv: list[str]) -> argparse.Namespace:
     return p.parse_args(argv)
 
 
+def write(a: argparse.Namespace) -> dict:
+    """Validate and append one event; raises LedgerError and appends nothing on refusal."""
+    with open(a.manifest, "a+", encoding="utf-8") as fh:
+        fcntl.flock(fh, fcntl.LOCK_EX)
+        rec = build(read_records(fh), a)
+        fh.seek(0, os.SEEK_END)
+        fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
+        fh.flush()
+        os.fsync(fh.fileno())
+    return rec
+
+
+def append(manifest: str, event: str, resource_key: str, *, kind=None, role=None, parent=None, policy=None,
+           status=None, detail=None, selector: dict | None = None, observed: dict | None = None,
+           round_id=None, round_slug=None) -> dict:
+    """Library entry point for fleet.py: same rules as the command line, dict values instead of k=v."""
+    flat = lambda d: [f"{k}={v}" for k, v in _flatten(d or {})]  # noqa: E731
+    a = argparse.Namespace(manifest=manifest, event=event, resource_key=resource_key, kind=kind, role=role,
+                           parent=parent, policy=policy, status=status, detail=detail,
+                           selector=flat(selector), observed=flat(observed),
+                           round_id=round_id, round_slug=round_slug)
+    return write(a)
+
+
+def _flatten(d: dict, prefix: str = ""):
+    for k, v in d.items():
+        if isinstance(v, dict):
+            yield from _flatten(v, f"{prefix}{k}.")
+        elif v is not None:
+            yield f"{prefix}{k}", v
+
+
 def main(argv: list[str]) -> int:
     a = parse(argv)
     if not os.path.isabs(a.manifest):
@@ -210,17 +242,11 @@ def main(argv: list[str]) -> int:
     if not os.path.isdir(os.path.dirname(a.manifest)):
         print(f"ledger: no round directory at {os.path.dirname(a.manifest)}", file=sys.stderr)
         return 2
-    with open(a.manifest, "a+", encoding="utf-8") as fh:
-        fcntl.flock(fh, fcntl.LOCK_EX)
-        try:
-            rec = build(read_records(fh), a)
-        except LedgerError as exc:
-            print(f"ledger: {exc}", file=sys.stderr)
-            return 1
-        fh.seek(0, os.SEEK_END)
-        fh.write(json.dumps(rec, ensure_ascii=False) + "\n")
-        fh.flush()
-        os.fsync(fh.fileno())
+    try:
+        rec = write(a)
+    except LedgerError as exc:
+        print(f"ledger: {exc}", file=sys.stderr)
+        return 1
     print(f"seq {rec['seq']} {rec['event']} {rec['resource_key']} {rec['status']}")
     return 0
 
