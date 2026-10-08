@@ -62,7 +62,8 @@ literally. `init` records the repo, its current branch and head sha
 resolves every slot to its first usable model and CLI, and prints the
 command prefix for the rest of the round, `fleet: python3 … --round
 <dir>`. Every later command in this skill is that prefix, written `F`
-below, pasted as a literal. Act on what `init` prints:
+below, pasted literally at the start of each command line (zsh does
+not word-split a variable holding it). Act on what `init` prints:
 
 - `BLOCKER` lines: a required slot with no usable model, or no review
   model of another vendor. Ask the user.
@@ -140,7 +141,7 @@ worktree directories the round creates, and that the round accepts
 those folder-only trusts; the confirmation is the authority for that
 and nothing wider. A per-round slot override ("only codex this round")
 is `F resolve --override <slot>=<model>,<model>` with catalog model
-names; the user's file stays untouched.
+names, one `--override` per slot; the user's file stays untouched.
 
 ## 4. Packages and briefs
 

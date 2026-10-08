@@ -415,8 +415,8 @@ def cmd_resolve(rnd: Round, a) -> None:
         # The user may have edited the catalog (a dead model replaced); failed pairs stay failed.
         st["catalog"] = load_catalog(Path(st["catalog_path"]))
         models = st["catalog"]["models"]
-        if a.override:
-            slot, _, names = a.override.partition("=")
+        for ov in a.override or []:
+            slot, _, names = ov.partition("=")
             names = [m for m in names.split(",") if m]
             unknown = [m for m in names if m not in models]
             if unknown:
@@ -428,7 +428,7 @@ def cmd_resolve(rnd: Round, a) -> None:
         notes = resolve_slots(st)
         for slot in st["active"]:
             if st["active"][slot] != before.get(slot):
-                record_slot(rnd, st, slot, why=f"override {a.override}" if a.override else "resolve")
+                record_slot(rnd, st, slot, why=f"override {' '.join(a.override)}" if a.override else "resolve")
     for slot, p in st["active"].items():
         print(f"slot {slot}: " + (f"{p['model']} via {p['kind']} ({p['vendor']})" if p else "none"))
     for n in notes:
@@ -1262,7 +1262,9 @@ def _poll(rnd: Round) -> tuple[list[str], list[str], bool]:
                 in_flight = True
                 continue
             if ag.get("sent_at"):
-                if seq == ag.get("sent_seq") and s != "blocked":
+                # A CLI that is visibly working has picked the prompt up, even
+                # when its integration has not bumped the state sequence yet.
+                if seq == ag.get("sent_seq") and s in SETTLED:
                     if now - ag["sent_at"] < UNPICKED_AFTER:
                         in_flight = True
                         continue
@@ -1654,7 +1656,7 @@ def main(argv: list[str]) -> int:
     s.add_argument("--slug", required=True)
     s.add_argument("--slots")
     s = sub.add_parser("resolve")
-    s.add_argument("--override", help="SLOT=model1,model2 for this round")
+    s.add_argument("--override", action="append", help="SLOT=model1,model2 for this round (repeatable)")
     s = sub.add_parser("package")
     s.add_argument("slug")
     s.add_argument("--slot", required=True)
