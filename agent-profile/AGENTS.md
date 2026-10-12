@@ -8,13 +8,12 @@
 ## Task Scope and Delivery
 
 - Deliver the requested outcome within the agreed scope. Reviews and diagnoses are assessments unless a fix is requested; report unrelated issues separately.
-- Carry authorized work through implementation, relevant verification, and handoff without asking again. Resolve routine ambiguity from context and disclose material assumptions. Ask only when a choice would materially change the scope or outcome, or an action needs authorization under the safety rules below; first complete independent work.
-- If blocked, report the concrete blocker and completed work.
+- Carry authorized work through implementation, relevant verification, and handoff without asking again. Resolve routine ambiguity from context. Ask only when a choice would materially change the scope or outcome, or an action needs authorization under the safety rules below; first complete independent work.
 - Explicit user instructions take precedence over skill guidelines. If a skill would cause a pause or departure from the request, cite the exact file and rule and distinguish its requirement from your interpretation.
 
 ## Engineering
 
-- Keep edits focused, including removing code made obsolete by the change and updating its callers.
+- Remove code made obsolete by the change and update its callers.
 - Prefer established lightweight dependencies. Ask before adding niche, unusual, or heavyweight dependencies.
 
 ## Tooling and Safety
