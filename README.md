@@ -43,6 +43,43 @@ npx skills add ZingerLittleBee/skills@writing-x-zh-briefs
 npx skills add ZingerLittleBee/skills@reject-attribution
 ```
 
+## Skills in use
+
+The skills I install globally on every machine, grouped by source repo. Local-only
+skills are not listed.
+
+| Source | Skills |
+|---|---|
+| [`mattpocock/skills`](https://github.com/mattpocock/skills) | `ask-matt`, `code-review`, `codebase-design`, `diagnosing-bugs`, `domain-modeling`, `grill-me`, `grill-with-docs`, `grilling`, `handoff`, `implement`, `implement-spec`, `improve-codebase-architecture`, `prototype`, `research`, `retro`, `setup-matt-pocock-skills`, `tdd`, `teach`, `to-questionnaire`, `to-spec`, `to-tickets`, `triage`, `wait-what`, `wayfinder`, `wizard`, `writing-for-agents` |
+| [`jakubkrehel/skills`](https://github.com/jakubkrehel/skills) | `better-accessibility`, `better-colors`, `better-interface`, `better-layout`, `better-typography`, `better-ui`, `better-writing`, `state-machine` |
+| [`emilkowalski/skills`](https://github.com/emilkowalski/skills) | `animation-vocabulary`, `apple-design`, `emil-design-eng`, `find-animation-opportunities`, `improve-animations`, `pick-ui-library`, `review-animations` |
+| [`ZingerLittleBee/skills`](https://github.com/ZingerLittleBee/skills) | `dispatch-tickets`, `herdr-fleet`, `publish-release`, `reject-attribution`, `testloop`, `ui-research`, `unslop` |
+| [`vercel-labs/skills`](https://github.com/vercel-labs/skills) | `find-skills` |
+| [`vercel-labs/agent-skills`](https://github.com/vercel-labs/agent-skills) | `vercel-react-best-practices`, `web-design-guidelines` |
+| [`vercel-labs/agent-browser`](https://github.com/vercel-labs/agent-browser) | `agent-browser` |
+| [`wheresryan22/anatomy`](https://github.com/wheresryan22/anatomy) | `anatomy` |
+| [`leonxlnx/taste-skill`](https://github.com/leonxlnx/taste-skill) | `design-taste-frontend` |
+| [`herdrdev/herdr`](https://github.com/herdrdev/herdr) | `herdr` |
+| [`shadcn/improve`](https://github.com/shadcn/improve) | `improve` |
+| [`humanlayer/skills`](https://github.com/humanlayer/skills) | `show-me` |
+
+Install all of them on a new machine or VM (needs Node.js; no clone required):
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ZingerLittleBee/skills/main/install-skills.sh | bash
+```
+
+From a clone, run `./install-skills.sh`. Re-running updates every skill to its
+latest upstream version. Skills are linked into a fixed agent list (Claude Code,
+Codex, Amp, Cursor, and others); override it with `SKILLS_AGENTS`:
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/ZingerLittleBee/skills/main/install-skills.sh | SKILLS_AGENTS="claude-code codex" bash
+```
+
+The list lives in [`install-skills.sh`](install-skills.sh); update it together with
+this table.
+
 ## Agent profile
 
 [`agent-profile/AGENTS.md`](agent-profile/AGENTS.md) is the user-level agent profile
