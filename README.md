@@ -77,9 +77,6 @@ Codex, Amp, Cursor, and others); override it with `SKILLS_AGENTS`:
 curl -fsSL https://raw.githubusercontent.com/ZingerLittleBee/skills/main/install-skills.sh | SKILLS_AGENTS="claude-code codex" bash
 ```
 
-The list lives in [`install-skills.sh`](install-skills.sh); update it together with
-this table.
-
 ## Agent profile
 
 [`agent-profile/AGENTS.md`](agent-profile/AGENTS.md) is the user-level agent profile

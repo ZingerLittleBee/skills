@@ -10,7 +10,7 @@ set -euo pipefail
 # directories on a fresh machine), so the target agents are always explicit.
 AGENTS="${SKILLS_AGENTS:-claude-code codex amp cursor droid opencode gemini-cli github-copilot cline kilo kimi-code-cli pi warp zed}"
 
-# One entry per source repo: "<owner/repo> <skill>...". Keep in sync with README.md.
+# One entry per source repo: "<owner/repo> <skill>...".
 SOURCES=(
   "mattpocock/skills ask-matt code-review codebase-design diagnosing-bugs domain-modeling grill-me grill-with-docs grilling handoff implement implement-spec improve-codebase-architecture prototype research retro setup-matt-pocock-skills tdd teach to-questionnaire to-spec to-tickets triage wait-what wayfinder wizard writing-for-agents"
   "jakubkrehel/skills better-accessibility better-colors better-interface better-layout better-typography better-ui better-writing state-machine"
