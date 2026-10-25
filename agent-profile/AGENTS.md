@@ -41,7 +41,7 @@
 
 - Rust: avoid `unwrap` and panics in production; format only the crates you changed.
 - TypeScript: follow the lockfile's package manager, `pnpm` for new projects. Reserve `any` and error-hiding assertions for genuine third-party gaps.
-- Frontend: build on the project's design system and accessible primitives rather than introducing another.
+- Frontend: build on the project's design system and accessible primitives rather than introducing another. Avoid unnecessary secondary labels and descriptions; let the layout do the explaining.
 - Python: `uv` and `pyproject.toml` for new projects; explicit models over loose dictionaries.
 
 ## Communication
