@@ -33,18 +33,8 @@
 
 ## Testing
 
-- Use the repository's documented task runner for relevant tests, builds, and required checks; consult CI if entry points are unclear.
-- Match verification to the change. Run the smallest existing test that already covers the edit. After it passes, repeat or broaden it only for a new change, a failure, or an unresolved concern.
-- Leave the suite unchanged unless the user asks for a test. Report a missing test instead of creating one. Do not add a test to cover a change, and do not restate the implementation in a test.
-- When an existing test fails after an edit, fix the code. Change a test only when the user asked to change that behavior, or the assertion itself is wrong. Do not weaken or delete a test to make it pass.
-- When the user asks for a test, write the named behavior as its own specification, one focused test, apart from the implementation. Prefer real behavior; mock only external boundaries that cannot reasonably run.
-
-## Language Defaults
-
-- Rust: avoid `unwrap` and panics in production; format only the crates you changed.
-- TypeScript: follow the lockfile's package manager, `pnpm` for new projects. Reserve `any` and error-hiding assertions for genuine third-party gaps.
-- Frontend: build on the project's design system and accessible primitives rather than introducing another. Avoid unnecessary secondary labels and descriptions; let the layout do the explaining.
-- Python: `uv` and `pyproject.toml` for new projects; explicit models over loose dictionaries.
+- Use the repository's documented task runner for tests, builds, and required checks. Run the smallest existing test that covers the edit, and stop when it passes.
+- Leave the suite unchanged unless the user asks for a test or changes that behavior. Report a missing test, and fix a failure in the code unless the assertion itself is wrong. A requested test states the named behavior once, against real behavior where it can run.
 
 ## Communication
 
