@@ -34,8 +34,10 @@
 ## Testing
 
 - Use the repository's documented task runner for relevant tests, builds, and required checks; consult CI if entry points are unclear.
-- Match verification to the change. After relevant checks pass, repeat or broaden them only for new changes, failures, or unresolved concerns.
-- Add meaningful behavior tests when customary for this kind of change. Avoid tests that merely mirror a reversible, low-impact edit. Prefer real behavior; mock only external boundaries that cannot reasonably run.
+- Match verification to the change. Run the smallest existing test that already covers the edit. After it passes, repeat or broaden it only for a new change, a failure, or an unresolved concern.
+- Leave the suite unchanged unless the user asks for a test. Report a missing test instead of creating one. Do not add a test to cover a change, and do not restate the implementation in a test.
+- When an existing test fails after an edit, fix the code. Change a test only when the user asked to change that behavior, or the assertion itself is wrong. Do not weaken or delete a test to make it pass.
+- When the user asks for a test, write the named behavior as its own specification, one focused test, apart from the implementation. Prefer real behavior; mock only external boundaries that cannot reasonably run.
 
 ## Language Defaults
 
