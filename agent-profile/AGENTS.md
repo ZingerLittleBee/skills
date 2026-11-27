@@ -33,8 +33,7 @@
 
 ## Testing
 
-- Never run tests during development. Verify a change by building it with the repository's documented task runner and inspecting the result, such as the rendered UI; CI runs the tests.
-- Run a test only when the user explicitly asks, and then only the smallest existing test that covers the edit, stopping when it passes.
+- Never run tests during development; verify by building and inspecting the result. Run tests only when explicitly asked.
 - Leave the suite unchanged unless the user asks for a test or changes that behavior. Report a missing test, and fix a failure in the code unless the assertion itself is wrong. A requested test states the named behavior once, against real behavior where it can run.
 
 ## Communication
