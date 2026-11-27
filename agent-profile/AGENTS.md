@@ -33,7 +33,7 @@
 
 ## Testing
 
-- Use the repository's documented task runner for tests, builds, and required checks. Run the smallest existing test that covers the edit, and stop when it passes. Verify a visual-only change by inspecting the rendered UI, and run tests for it only when the user asks.
+- Use the repository's documented task runner for builds, checks, and tests. During development, verify by building and inspecting the result, such as the rendered UI. Run tests only when the user asks, then the smallest existing test that covers the edit, stopping when it passes.
 - Leave the suite unchanged unless the user asks for a test or changes that behavior. Report a missing test, and fix a failure in the code unless the assertion itself is wrong. A requested test states the named behavior once, against real behavior where it can run.
 
 ## Communication
