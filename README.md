@@ -1,9 +1,8 @@
 # skills
 
 Personal collection of [agent skills](https://skills.sh/) for Claude Code and the
-open agent-skills ecosystem. Each top-level directory is one skill, except
-[`agent-profile/`](agent-profile/) which holds the shared agent profile and
-[`goals/`](goals/) which holds reference-only Codex goal drafts (see below).
+open agent-skills ecosystem, plus shared agent settings, Rex shortcuts, and Codex
+goal drafts.
 
 ## Install
 
@@ -92,3 +91,19 @@ run that script; see [`agent-profile/README.md`](agent-profile/README.md) for de
 is not installed, loaded automatically, or exposed as a quick invocation. Open a
 goal and copy its contents manually when needed; see
 [`goals/README.md`](goals/README.md).
+
+## Rex shortcuts
+
+After installing Rex, run [`./setup-rex.sh`](setup-rex.sh) from a clone of this
+repository on each machine. The script installs the shortcuts from
+[`rex/shortcuts.lua`](rex/shortcuts.lua) into Rex's `init.lua`, normally
+`~/.config/rex/init.lua`. It preserves other settings, backs up the existing file
+before changing it, and reloads a running local server. Re-run it after updating
+this repository.
+Set `REX_BIN` if the CLI is in a custom location.
+
+| Shortcut | Action |
+| --- | --- |
+| Command + N | Open a new local session in `~/Documents`. |
+| Control + Option + Command + N | Create a Git worktree under `~/Documents/worktree` and focus a shell tab in the current session. |
+| Control + Option + Command + X | Remove the current linked worktree and close its tab after successful removal. The Git branch is retained. |
