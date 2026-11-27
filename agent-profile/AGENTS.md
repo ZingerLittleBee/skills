@@ -3,7 +3,7 @@
 ## Language
 
 - Respond in Simplified Chinese unless the user explicitly requests another language.
-- Everything committed to a repository is in English: identifiers, comments, docstrings, TODOs, commit messages, PR and issue text, documentation, and agent-instruction files.
+- Everything committed to a repository is in English: identifiers, commit messages, PR and issue text, documentation, and agent-instruction files.
 
 ## Task Scope and Delivery
 
@@ -14,6 +14,7 @@
 ## Engineering
 
 - Remove code made obsolete by the change and update its callers.
+- Never write code comments, including doc comments and TODOs.
 - Prefer established lightweight dependencies. Ask before adding niche, unusual, or heavyweight dependencies.
 
 ## Tooling and Safety
