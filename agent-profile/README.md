@@ -1,6 +1,6 @@
 # agent-profile
 
-**Not a skill.** This directory is the single source of truth for the shared user-level agent profile (`AGENTS.md`), the global instructions for all AI coding tools (Claude Code, Codex, Amp, OpenCode, Droid, Grok, Delta, Cursor).
+**Not a skill.** This directory is the single source of truth for the shared user-level agent profile (`AGENTS.md`), the global instructions for all AI coding tools (Claude Code, Codex, Amp, OpenCode, Droid, Grok, Antigravity CLI, Delta, Cursor).
 
 Everything outside this repo is a symlink, except Cursor (see below). Edit `AGENTS.md` here, commit here; symlink tools pick up the change on their next session. After editing, re-run `./setup-agent-profile.sh` so the Cursor rule is regenerated.
 
@@ -13,10 +13,13 @@ Everything outside this repo is a symlink, except Cursor (see below). Edit `AGEN
 ~/.config/opencode/AGENTS.md     ├─> <repo>/agent-profile/AGENTS.md
 ~/.factory/AGENTS.md             │
 ~/.grok/AGENTS.md                │
+~/.gemini/AGENTS.md              │
 ~/Library/Application Support/delta/AGENTS.md ─┘
 
 ~/.cursor/rules/agent-profile.mdc   generated always-apply .mdc (not a symlink)
 ```
+
+Antigravity CLI (`agy`) reads `~/.gemini/AGENTS.md` alongside any existing `~/.gemini/GEMINI.md`.
 
 Cursor is not a symlink because Cursor CLI and the editor do **not** read `~/.cursor/AGENTS.md`. Their user-level file rules live in `~/.cursor/rules/*.mdc` and need `alwaysApply: true` frontmatter, which the shared `AGENTS.md` must not carry.
 

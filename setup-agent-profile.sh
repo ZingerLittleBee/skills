@@ -68,6 +68,7 @@ link "$HOME/.omp/agent/AGENTS.md"       # Oh My Pi
 link "$HOME/.config/opencode/AGENTS.md" # OpenCode
 link "$HOME/.factory/AGENTS.md"         # Droid (Factory)
 link "$HOME/.grok/AGENTS.md"            # Grok
+link "$HOME/.gemini/AGENTS.md"
 link "$HOME/Library/Application Support/delta/AGENTS.md" # Delta
 install_cursor_rule                     # Cursor (CLI + editor)
 

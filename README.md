@@ -79,8 +79,8 @@ curl -fsSL https://raw.githubusercontent.com/ZingerLittleBee/skills/main/install
 ## Agent profile
 
 [`agent-profile/AGENTS.md`](agent-profile/AGENTS.md) is the user-level agent profile
-shared across Claude Code, Codex, Amp, OpenCode, Droid, Grok, Delta, and Cursor. It is not a
-skill; it is version-controlled here and wired into each tool by
+shared across Claude Code, Codex, Amp, OpenCode, Droid, Grok, Antigravity CLI
+(`agy`), Delta, and Cursor. It is version-controlled here and installed by
 [`./setup-agent-profile.sh`](setup-agent-profile.sh) (symlinks for most tools; a
 generated always-apply `.mdc` for Cursor). On a new machine, clone this repo and
 run that script; see [`agent-profile/README.md`](agent-profile/README.md) for details.
