@@ -20,10 +20,10 @@ _script_dir=$(CDPATH= cd -- "$(dirname -- "$0")" && pwd)
 text=$(tr -d '\r' < "${msg_file}")
 failed=0
 
-co_matches=$(printf '%s\n' "${text}" | attribution_co_author_lines)
+co_matches=$(printf '%s\n' "${text}" | attribution_agent_co_author_lines)
 if [[ -n "${co_matches}" ]]; then
   failed=1
-  echo "Commit message must not contain Co-authored-by:"
+  echo "Commit message must not contain an AI Co-authored-by trailer:"
   while IFS= read -r line || [[ -n "${line}" ]]; do
     [[ -z "${line}" ]] && continue
     echo "  ${line}"
@@ -43,7 +43,7 @@ fi
 email_matches=$(printf '%s\n' "${text}" | attribution_email_lines)
 if [[ -n "${email_matches}" ]]; then
   failed=1
-  echo "Commit message must not contain an email address:"
+  echo "Commit message must not contain an email address outside a Co-authored-by trailer:"
   while IFS= read -r line || [[ -n "${line}" ]]; do
     [[ -z "${line}" ]] && continue
     echo "  ${line}"

@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Fail if any commit in base..head has a Co-authored-by trailer.
 # Usage: check-co-authors.sh <base_sha> <head_sha>
 set -euo pipefail
 
@@ -43,7 +42,7 @@ while IFS= read -r commit || [[ -n "${commit}" ]]; do
   [[ -z "${commit}" ]] && continue
   body=$(git log -1 --format='%B' "${commit}" | tr -d '\r')
   short=$(git rev-parse --short "${commit}")
-  co_matches=$(printf '%s\n' "${body}" | attribution_co_author_lines)
+  co_matches=$(printf '%s\n' "${body}" | attribution_agent_co_author_lines)
   gen_matches=$(printf '%s\n' "${body}" | attribution_generated_lines)
   email_matches=$(printf '%s\n' "${body}" | attribution_email_lines)
   matches=$(printf '%s\n%s\n%s\n' "${co_matches}" "${gen_matches}" "${email_matches}")
@@ -52,7 +51,7 @@ while IFS= read -r commit || [[ -n "${commit}" ]]; do
     failed=1
     while IFS= read -r line || [[ -n "${line}" ]]; do
       [[ -z "${line}" ]] && continue
-      echo "::error::Commit ${short} has a Co-authored-by trailer, generated-by text, or an email address"
+      echo "::error::Commit ${short} has an AI Co-authored-by trailer, generated-by text, or an email address"
       echo "  ${short}  ${line}"
       echo "  Fix: git rebase -i ${base_sha}  # drop the matching line, then force-push"
     done <<< "${matches}"
@@ -63,4 +62,4 @@ if [[ "${failed}" -ne 0 ]]; then
   exit 1
 fi
 
-echo "OK: no Co-authored-by, generated-by, or email attribution in ${base_sha}..${head_sha}"
+echo "OK: no AI Co-authored-by, generated-by, or email attribution in ${base_sha}..${head_sha}"

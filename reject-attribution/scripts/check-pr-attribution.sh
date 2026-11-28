@@ -1,5 +1,4 @@
 #!/usr/bin/env bash
-# Fail if the PR title or body contains generated-by attribution or any email.
 # Reads PR_TITLE and PR_BODY from the environment. Null/unset body is empty.
 set -euo pipefail
 
@@ -11,12 +10,13 @@ title=${PR_TITLE-}
 body=${PR_BODY-}
 text=$(printf '%s\n%s\n' "${title}" "${body}" | tr -d '\r')
 
+co_matches=$(printf '%s\n' "${text}" | attribution_agent_co_author_lines)
 gen_matches=$(printf '%s\n' "${text}" | attribution_generated_lines)
 email_matches=$(printf '%s\n' "${text}" | attribution_email_lines)
-matches=$(printf '%s\n%s\n' "${gen_matches}" "${email_matches}" | sed '/^$/d' | sort -u)
+matches=$(printf '%s\n%s\n%s\n' "${co_matches}" "${gen_matches}" "${email_matches}" | sed '/^$/d' | sort -u)
 
 if [[ -n "${matches}" ]]; then
-  echo "::error::PR title or description contains generated-by attribution or an email address"
+  echo "::error::PR title or description contains an AI Co-authored-by trailer, generated-by attribution, or an email address"
   while IFS= read -r line || [[ -n "${line}" ]]; do
     [[ -z "${line}" ]] && continue
     echo "  ${line}"
@@ -25,4 +25,4 @@ if [[ -n "${matches}" ]]; then
   exit 1
 fi
 
-echo "OK: PR title and description have no generated-by attribution or email address"
+echo "OK: PR title and description have no AI Co-authored-by trailer, generated-by attribution, or email address"
