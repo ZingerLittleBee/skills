@@ -44,18 +44,45 @@ local function run_command(argv, timeout)
   return result.stdout
 end
 
-local function terminal_directory(ctx)
-  if not ctx.block_id then
+local function terminal_directory(block_id)
+  if not block_id then
     return nil
   end
-  local result = rex.block.call("com.superlogical.terminal", "pwd", {})
+  local result = rex.block.call("com.superlogical.terminal", "pwd", { block_id = block_id })
   local path = result and result.pwd and result.pwd:match("^file://[^/]*(/.*)$")
-  if not path then
+  if path then
+    return (path:gsub("%%(%x%x)", function(hex)
+      return string.char(tonumber(hex, 16))
+    end))
+  end
+
+  local process = rex.block.call("com.superlogical.terminal", "process", { block_id = block_id })
+  local foreground = process and process.foreground
+  local cwd = foreground and foreground.cwd
+  if cwd and cwd:sub(1, 1) == "/" and foreground.name ~= "ssh" and foreground.name ~= "mosh-client" then
+    return cwd
+  end
+end
+
+local function active_terminal_directory()
+  local session = rex.session.view()
+  if not session or not session.windows then
     return nil
   end
-  return (path:gsub("%%(%x%x)", function(hex)
-    return string.char(tonumber(hex, 16))
-  end))
+  for _, window in ipairs(session.windows) do
+    if window.window_id == session.active_window_id then
+      return terminal_directory(window.focused_block_id)
+    end
+  end
+end
+
+local function git_directory(directory)
+  if directory then
+    local result = rex.exec({ "git", "-C", directory, "rev-parse", "--is-inside-work-tree" })
+    if result and result.ok and result.stdout == "true\n" then
+      return directory
+    end
+  end
 end
 
 local function suggested_worktree_branch(repo, repo_worktrees)
@@ -99,9 +126,16 @@ rex.action{
       error("Open a Rex session before creating a worktree tab.")
     end
 
-    local repo = args.repo or terminal_directory(ctx)
+    local repo = args.repo or git_directory(terminal_directory(ctx.block_id))
     if not repo then
-      error("Focus a terminal pane in a Git repository before creating a worktree.")
+      local suggested = not ctx.block_id and git_directory(active_terminal_directory()) or nil
+      repo = rex.ui.input{
+        title = "Git repository directory",
+        placeholder = "~/Documents/project",
+        value = suggested,
+        confirm = "Use repository",
+      }
+      if repo == nil then return end
     end
     repo = repo:gsub("^~/", home .. "/")
     if repo:sub(1, 1) ~= "/" then
