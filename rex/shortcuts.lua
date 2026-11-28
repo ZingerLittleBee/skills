@@ -32,8 +32,76 @@ rex.action{
 rex.unbind("cmd+n", "session.new")
 rex.bind("cmd+n", "new_documents_session")
 
-local function run_command(argv, timeout)
-  local result, err = rex.exec(argv, { timeout = timeout or 10 })
+local worktree_spinner = { "⠋", "⠙", "⠹", "⠸", "⠼", "⠴", "⠦", "⠧", "⠇", "⠏" }
+local worktree_commands = {}
+
+local function find_window(window_id)
+  local response = rex.call("target.resolve", { kinds = { "window" }, queries = { window_id } })
+  local match = response and response.results and response.results[1]
+  local window = match and match.target
+  if window and window.window_id == window_id then
+    return window
+  end
+end
+
+local function run_with_worktree_progress(argv, options, window_id, title)
+  if worktree_commands[window_id] then
+    return nil, "A worktree operation is already running in this tab."
+  end
+
+  worktree_commands[window_id] = true
+  local command, err = rex.exec.start(argv, options)
+  if not command then
+    worktree_commands[window_id] = nil
+    return nil, err
+  end
+
+  local original_label, shown_label
+  local frame = 1
+  local result, wait_err = command:wait(0.3)
+  while not result and wait_err == "timeout" do
+    local window = find_window(window_id)
+    if not window or (shown_label and window.label ~= shown_label) then
+      break
+    end
+    original_label = original_label or window.label
+    local next_label = worktree_spinner[frame] .. " " .. title
+    if not rex.session.set_window_label{
+      session_id = window.session_id, window_id = window_id, label = next_label,
+    } then
+      break
+    end
+    shown_label = next_label
+    frame = frame % #worktree_spinner + 1
+    result, wait_err = command:wait(0.15)
+  end
+  if not result and wait_err == "timeout" then
+    result, wait_err = command:wait()
+  end
+
+  if shown_label then
+    local window = find_window(window_id)
+    if window and window.label == shown_label then
+      if original_label == "Window " .. window_id:sub(-8) then
+        original_label = ""
+      end
+      rex.session.set_window_label{
+        session_id = window.session_id, window_id = window_id, label = original_label,
+      }
+    end
+  end
+  worktree_commands[window_id] = nil
+  return result, wait_err
+end
+
+local function run_command(argv, timeout, window_id, title)
+  local options = { timeout = timeout or 10 }
+  local result, err
+  if window_id then
+    result, err = run_with_worktree_progress(argv, options, window_id, title)
+  else
+    result, err = rex.exec(argv, options)
+  end
   if not result then
     error(err, 2)
   end
@@ -244,14 +312,6 @@ rex.action{
       end
     end
 
-    local changes = run_command({
-      "git", "-C", root, "status", "--porcelain=v1", "-z", "--untracked-files=normal",
-      "--ignored=matching", "--ignore-submodules=none",
-    }, 60)
-    if changes ~= "" then
-      error("This worktree has modified, untracked, or ignored files. Review them before removing it.")
-    end
-
     local placement, err = rex.session.describe_block{ block_id = ctx.block_id }
     if not placement then
       error(err)
@@ -261,7 +321,23 @@ rex.action{
       error("Focus a terminal in a Rex tab before removing its worktree.")
     end
 
-    run_command({ "git", "-C", root, "worktree", "remove", "--", root }, 120)
+    local changes = run_command({
+      "git", "-C", root, "status", "--porcelain=v1", "-z", "--untracked-files=normal",
+      "--ignored=matching", "--ignore-submodules=none",
+    }, 60, window_id, "Checking worktree…")
+    if changes ~= "" then
+      error("This worktree has modified, untracked, or ignored files. Review them before removing it.")
+    end
+
+    placement, err = rex.session.describe_block{ block_id = ctx.block_id }
+    if not placement then
+      error(err)
+    end
+    if placement.block.window_id ~= window_id then
+      error("The terminal moved to another Rex tab. Run the shortcut again from that tab.")
+    end
+
+    run_command({ "git", "-C", root, "worktree", "remove", "--", root }, 120, window_id, "Removing worktree…")
     local closed, close_err = rex.session.close_window{ window_id = window_id }
     if not closed then
       error("Worktree removed at " .. root .. ". Could not close its Rex tab: " .. close_err)

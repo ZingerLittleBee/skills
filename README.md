@@ -107,3 +107,6 @@ Set `REX_BIN` if the CLI is in a custom location.
 | Command + N | Open a new local session in `~/Documents`. |
 | Control + Option + Command + N | Create a Git worktree under `~/Documents/worktree` and focus a shell tab in the current session. |
 | Control + Option + Command + X | Remove the current linked worktree and close its tab after successful removal. The Git branch is retained. |
+
+If the Git status check or worktree removal takes more than 300 ms, the tab
+title shows a spinner and the current step.
